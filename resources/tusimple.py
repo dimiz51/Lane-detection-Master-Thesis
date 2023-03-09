@@ -141,26 +141,25 @@ class TuSimple(Dataset):
 
 
 
-def main():
+# def main():
     
-    # ROOT DIRECTORIES
-    root_dir = os.path.dirname(os.getcwd())
-    annotated_dir = os.path.join(root_dir,'datasets/tusimple/train_set/annotations')
-    clips_dir = os.path.join(root_dir,'datasets/tusimple/train_set/')
-    annotated = os.listdir(annotated_dir)
+#     # ROOT DIRECTORIES
+#     root_dir = os.path.dirname(os.getcwd())
+#     annotated_dir = os.path.join(root_dir,'datasets/tusimple/train_set/annotations')
+#     clips_dir = os.path.join(root_dir,'datasets/tusimple/train_set/')
+#     annotated = os.listdir(annotated_dir)
     
-    # Get path directories for clips and annotations for the TUSimple dataset + ground truth dictionary
-    annotations = list()
-    for gt_file in annotated:
-        path = os.path.join(annotated_dir,gt_file)
-        json_gt = [json.loads(line) for line in open(path)]
-        annotations.append(json_gt)
+#     # Get path directories for clips and annotations for the TUSimple dataset + ground truth dictionary
+#     annotations = list()
+#     for gt_file in annotated:
+#         path = os.path.join(annotated_dir,gt_file)
+#         json_gt = [json.loads(line) for line in open(path)]
+#         annotations.append(json_gt)
     
-    annotations = [a for f in annotations for a in f]
+#     annotations = [a for f in annotations for a in f]
     
-    dataset = TuSimple(train_annotations = annotations, train_img_dir = clips_dir, resize_to = (640,640), subset_size = 0.05)
+#     dataset = TuSimple(train_annotations = annotations, train_img_dir = clips_dir, resize_to = (640,640), subset_size = 0.05)
     
-    img_tns, gt = dataset[0]
-    dataset.plot_img_gt(img_tns,gt['ground_truth_mask'])
+#     img_tns, gt = dataset[0]
+#     dataset.plot_img_gt(img_tns,gt['ground_truth_mask'])
     
-main()
