@@ -106,8 +106,9 @@ class TuSimple(Dataset):
                                             transforms.Resize(size = self.resize)])
         
         resized_gt_tensor = gt_transforms(seg_gt_mask)
+        resized_gt_tensor[resized_gt_tensor != 0] = 1
         
-        new_gt = {'ground_truth_mask': resized_gt_mask,'gt_tensor': resized_gt_tensor,'raw_file': original_gt['raw_file']}
+        new_gt = {'ground_truth_mask': resized_gt_mask,'gt_tensor': resized_gt_tensor.float(),'raw_file': original_gt['raw_file']}
         
         return new_gt
               

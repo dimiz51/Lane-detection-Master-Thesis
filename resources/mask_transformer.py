@@ -70,12 +70,12 @@ class MaskTransformer(nn.Module):
         
         # Add the learnable class embedding to the patch embeddings and pass through the transformer blocks
         x = torch.cat((x, cls_emb), 1)
-        for blk in self.blocks:
+        for blk in self.transformer_blocks:
             x = blk(x)
         x = self.decoder_norm(x)
 
         # Split output tensor into patch embeddings and the transformer patch level class embeddings
-        patches, cls_seg_feat = x[:, : -self.n_cls], x[:, -self.n_cls :]
+        patches, cls_seg_feat = x[:, : -self.class_n], x[:, -self.class_n :]
         patches = patches @ self.proj_patch
         cls_seg_feat = cls_seg_feat @ self.proj_classes
 
