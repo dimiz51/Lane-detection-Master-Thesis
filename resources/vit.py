@@ -79,7 +79,8 @@ class PatchEmbedding(nn.Module):
     
 # B-16 ViT Class
 class ViT(nn.Module):
-    def __init__(self, image_size=224, patch_size=16, num_classes=1000, dim=768, depth=12, heads=12, mlp_dim=3072, dropout=0.1,load_pre = False, pre_trained_path = None):
+    def __init__(self, image_size=224, patch_size=16, num_classes=1000, dim=768, depth=12, heads=12, 
+                 mlp_dim=3072, dropout=0.1,load_pre = False, pre_trained_path = None):
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
@@ -103,7 +104,7 @@ class ViT(nn.Module):
         # Define the positional embedding layer
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patches, dim))
         self.pos_embedding = nn.init.trunc_normal_(self.pos_embedding,std= 0.02)
-
+        
         # Define the transformer layers
         self.transformer = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dim_feedforward=mlp_dim, dropout=dropout),
@@ -142,12 +143,21 @@ class ViT(nn.Module):
         if self.image_size != 224:
             resized_size = self.image_size
             self.resize_pos_embeds(resized_size)
+            
+        # Dynamically expand pos embed across batch dimension
+        if self.training:
+            pos_embedding = nn.Parameter(self.pos_embedding.expand(x.shape[0], -1, -1))
+            # Add the positional embeddings and use dropout
+            x = (x.reshape(x.shape[0], -1, 768) + pos_embedding)
+            x = self.dropout(x)
+        else:
+            pos_embedding = self.pos_embedding
+            # Add the positional embeddings and use dropout
+            x = (x.reshape(1, -1, 768) + pos_embedding)
+            x = self.dropout(x)
         
-        
-        # Add the positional embeddings and use dropout
-        x = (x.reshape(1, -1, 768) + self.pos_embedding)
-        x = self.dropout(x)
-        
+
+   
         # Apply the transformer layers
         x = self.transformer(x)
         
