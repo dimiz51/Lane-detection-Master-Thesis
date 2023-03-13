@@ -4,6 +4,7 @@ import os
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
+from sklearn.model_selection import train_test_split
 
 from torchvision.transforms import ToPILImage
 import json
@@ -14,6 +15,17 @@ import cv2
 # Set seed for randomize functions (Ez reproduction of results)
 random.seed(100)
 
+# Define a custom dataset class for our data splits
+class BaseSplitClass(Dataset):
+    def __init__(self, X, y):
+        self.X = X
+        self.y = y
+        
+    def __len__(self):
+        return len(self.X)
+    
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
 
 # TuSimple Dataset loader and pre-processing class
 # Full Size: Train(3626 clips/ 20 frames per clip/ 20th only is annotated), Test(2782 clips/ 20 frames per clip/ 20th only annotated)
@@ -138,29 +150,18 @@ class TuSimple(Dataset):
             train_set.append(img_tensor)
         
         return train_set, resized_train_gt   
+    
+    # Generate train and validation splits dynamically (after this operation use del dataset to free memory)
+    def train_val_split(self):
+        X = self.train_dataset
+        Y = self.train_gt
+        
+        # Split the generated train set into train and val
+        X_train, X_val, Y_train, Y_val = train_test_split(X, Y, test_size= self.val_size,random_state=42)
+        
+        train_set = BaseSplitClass(X_train, Y_train)
+        validation_set = BaseSplitClass(X_val,Y_val)
+        
+        return train_set, validation_set
         
 
-
-
-# def main():
-    
-#     # ROOT DIRECTORIES
-#     root_dir = os.path.dirname(os.getcwd())
-#     annotated_dir = os.path.join(root_dir,'datasets/tusimple/train_set/annotations')
-#     clips_dir = os.path.join(root_dir,'datasets/tusimple/train_set/')
-#     annotated = os.listdir(annotated_dir)
-    
-#     # Get path directories for clips and annotations for the TUSimple dataset + ground truth dictionary
-#     annotations = list()
-#     for gt_file in annotated:
-#         path = os.path.join(annotated_dir,gt_file)
-#         json_gt = [json.loads(line) for line in open(path)]
-#         annotations.append(json_gt)
-    
-#     annotations = [a for f in annotations for a in f]
-    
-#     dataset = TuSimple(train_annotations = annotations, train_img_dir = clips_dir, resize_to = (640,640), subset_size = 0.05)
-    
-#     img_tns, gt = dataset[0]
-#     dataset.plot_img_gt(img_tns,gt['ground_truth_mask'])
-    
