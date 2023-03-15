@@ -151,10 +151,16 @@ class ViT(nn.Module):
             x = (x.reshape(x.shape[0], -1, 768) + pos_embedding)
             x = self.dropout(x)
         else:
-            pos_embedding = self.pos_embedding
+            # Batch forward for validation set
+            pos_embedding = nn.Parameter(self.pos_embedding.expand(x.shape[0], -1, -1))
             # Add the positional embeddings and use dropout
-            x = (x.reshape(1, -1, 768) + pos_embedding)
+            x = (x.reshape(x.shape[0], -1, 768) + pos_embedding)
             x = self.dropout(x)
+            
+            # pos_embedding = self.pos_embedding
+            # # Add the positional embeddings and use dropout
+            # x = (x.reshape(1, -1, 768) + pos_embedding)
+            # x = self.dropout(x)
         
         # Apply the transformer layers
         x = self.transformer(x)
