@@ -103,7 +103,7 @@ class ViT(nn.Module):
         
         # Define the positional embedding layer
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patches, dim))
-        self.pos_embedding = nn.init.trunc_normal_(self.pos_embedding,std= 0.02)
+        # self.pos_embedding = nn.init.trunc_normal_(self.pos_embedding,std= 0.02)
         
         # Define the transformer layers
         self.transformer = nn.TransformerEncoder(
@@ -157,6 +157,7 @@ class ViT(nn.Module):
             x = (x.reshape(x.shape[0], -1, 768) + pos_embedding)
             x = self.dropout(x)
             
+            # Predict for one sample
             # pos_embedding = self.pos_embedding
             # # Add the positional embeddings and use dropout
             # x = (x.reshape(1, -1, 768) + pos_embedding)

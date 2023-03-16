@@ -45,11 +45,9 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
     # Train the model
     for epoch in range(num_epochs):
         train_loss = 0
-        train_acc = 0
         train_iou = 0
         train_f1 = 0
         
-        val_acc = 0
         val_iou = 0
         val_f1 = 0
         
@@ -67,9 +65,8 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
             
             
             train_loss += loss.item() * inputs.size(0)
-            train_acc += utils.accuracy(pred = outputs.detach(), target = targets)
-            train_iou += iou_score(outputs.detach(), targets)
-            train_f1 += f1_score(outputs.detach(), targets)
+            train_iou += iou_score(outputs.detach().cpu(), targets.cpu())
+            train_f1 += f1_score(outputs.detach().cpu(), targets.cpu())
             
         if val_loader:
             for batch_idx, (inputs, targets) in enumerate(train_loader): 
@@ -77,16 +74,14 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
                 
-                val_acc += utils.accuracy(pred = outputs.detach(), target = targets)
-                val_iou += iou_score(outputs, targets)
-                val_f1 += f1_score(outputs,targets)
+                val_iou += iou_score(outputs.cpu(), targets.cpu())
+                val_f1 += f1_score(outputs.cpu(),targets.cpu())
         
-            val_acc /= len(val_loader)
+        
             val_iou /= len(val_loader)
             val_f1 /= len(val_loader)
             
         train_loss /= len(train_loader)
-        train_acc /= len(train_loader)
         train_iou /= len(train_loader)
         train_f1 /= len(train_loader)
         
@@ -94,10 +89,10 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
         
      # Print progress
         if lr_scheduler:
-            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_Acc: {:.3f} - Train_IoU: {:.3f} - Train_F1: {:.3f}'.format(epoch+1, train_loss,scheduler.get_last_lr()[0],train_acc, train_iou, train_f1))
+            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.3f} - Train_F1: {:.3f}'.format(epoch+1, train_loss,scheduler.get_last_lr()[0], train_iou, train_f1))
             scheduler.step()
             if val_loader:
-                print('Val_Acc: {:.3f}  - Val_F1: {:.3f}  - Val_IoU: {:.3f} '.format(val_acc,val_f1,val_iou))
+                print('Val_F1: {:.3f}  - Val_IoU: {:.3f} '.format(val_f1,val_iou))
         else:
             print('Epoch: {} - Train Loss: {:.4f}'.format(epoch+1, train_loss))
             

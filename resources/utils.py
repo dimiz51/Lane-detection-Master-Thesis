@@ -17,15 +17,6 @@ def disp_img(image: np.array , name = 'Image'):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     
-# Calculate mean batch accuracy metric (used in loops with batches)
-def accuracy(pred, target):
-    # loop through batch dimension
-    acc = 0
-    for i in range(pred.shape[0]):
-        acc += (pred[i] == target[i]).float().mean()
-        
-    return acc.item() / pred.shape[0]
-
 # Return the confusion matrix
 def confmat (pred,target):
     confmat = ConfusionMatrix(task="binary", num_classes=2)
