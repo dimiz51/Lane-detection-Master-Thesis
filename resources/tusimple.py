@@ -129,11 +129,10 @@ class TuSimple(Dataset):
     def generate_dataset(self):
         train_set = []
         
-        complete_idx = [idx for idx in range(0, self.complete_size + 1)]
+        complete_idx = [idx for idx in range(0, self.complete_size)]
         target_samples = int(self.complete_size * self.subset)
-        # val_samples = int(len(target_samples) * self.val_size)
         shuffled = random.sample(complete_idx,len(complete_idx))
-        
+
         # Pick n (target samples no) idx from the shuffled dataset
         dataset_idxs = [shuffled[idx] for idx in range(0, target_samples)]
         train_gt = [self.complete_gt[idx] for idx in dataset_idxs]
