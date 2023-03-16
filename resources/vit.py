@@ -26,8 +26,8 @@ def generate_mapping_dict():
     for i in range(12):
         prefix = f'blocks.{i}.'
 
-        mapping[f'{prefix}norm1.bias'] = f'transformer.layers.{i}.norm1.weight'
-        mapping[f'{prefix}norm1.weight'] = f'transformer.layers.{i}.norm1.bias'
+        mapping[f'{prefix}norm1.bias'] = f'transformer.layers.{i}.norm1.bias'
+        mapping[f'{prefix}norm1.weight'] = f'transformer.layers.{i}.norm1.weight'
         mapping[f'{prefix}norm2.bias'] = f'transformer.layers.{i}.norm2.bias'
         mapping[f'{prefix}norm2.weight'] = f'transformer.layers.{i}.norm2.weight'
         mapping[f'{prefix}mlp.fc1.bias'] = f'transformer.layers.{i}.linear1.bias'
@@ -44,10 +44,15 @@ def generate_mapping_dict():
 # Resize the pretrained positional embeddings to desired dimensions
 def resizing_pos_pretrained(pretrained_dict, model_dict):
     pretrained_pos_embedding = pretrained_dict['pos_embedding']
+
+    # Get new shape
     new_pos_embedding = torch.zeros_like(model_dict['pos_embedding'])
-    new_pos_embedding[:, :pretrained_pos_embedding.shape[1], :] = pretrained_pos_embedding
-    
-    # update the state_dict with the resized pos_embedding tensor
+    new_shape = tuple(torch.zeros_like(model_dict['pos_embedding']).squeeze(0).shape)
+
+    # Interpolate pre-trained embed to new size
+    new_pos_embedding =  F.interpolate(pretrained_pos_embedding.unsqueeze(0), size= new_shape, mode='bilinear', align_corners=False).squeeze(0)
+
+    # Update the state_dict with the resized pos_embedding tensor
     pretrained_dict['pos_embedding'] = new_pos_embedding
     return pretrained_dict
 
@@ -103,7 +108,6 @@ class ViT(nn.Module):
         
         # Define the positional embedding layer
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patches, dim))
-        # self.pos_embedding = nn.init.trunc_normal_(self.pos_embedding,std= 0.02)
         
         # Define the transformer layers
         self.transformer = nn.TransformerEncoder(
