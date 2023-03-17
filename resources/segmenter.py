@@ -30,7 +30,11 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss()
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-
+    
+    # set threshold to identify lane pixels to calculate eval metrics
+    LANE_THRESHOLD = 0.5
+    sigm = nn.Sigmoid()
+    
     # Set up learning rate scheduler
     if lr_scheduler:
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
@@ -57,7 +61,9 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
                    
             optimizer.zero_grad()
             outputs = model(inputs)
-            outputs.requires_grad = True
+            
+            eval_out = sigm(outputs.to(device).detach())
+            eval_out = torch.where(eval_out > LANE_THRESHOLD, torch.ones_like(eval_out), torch.zeros_like(eval_out))
             
             loss = criterion(outputs, targets)
             loss.backward()
@@ -65,8 +71,8 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
             
             
             train_loss += loss.item() * inputs.size(0)
-            train_iou += iou_score(outputs.detach().cpu(), targets.cpu())
-            train_f1 += f1_score(outputs.detach().cpu(), targets.cpu())
+            train_iou += iou_score(eval_out, targets)
+            train_f1 += f1_score(eval_out,targets)
             
         if val_loader:
             for batch_idx, (inputs, targets) in enumerate(train_loader): 
@@ -74,9 +80,11 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
                 
-                val_iou += iou_score(outputs.cpu(), targets.cpu())
-                val_f1 += f1_score(outputs.cpu(),targets.cpu())
-        
+                eval_out = sigm(outputs.to(device).detach())
+                eval_out = torch.where(eval_out > LANE_THRESHOLD, torch.ones_like(eval_out), torch.zeros_like(eval_out))
+                
+                val_iou += iou_score(eval_out, targets)
+                val_f1 += f1_score(eval_out,targets)
         
             val_iou /= len(val_loader)
             val_f1 /= len(val_loader)
@@ -118,12 +126,8 @@ class Segmenter(nn.Module):
 
         # Interpolate patch level class annotatations to pixel level and transform to original image size
         masks = F.interpolate(masks, size=(H, W), mode="bilinear")
-        predicted_masks = torch.argmax(masks, dim=1).float()
         
-        # expand the output mask tensor along the channel dimension to match the ground truth tensor (maybe needs removal)
-        predicted_masks = predicted_masks.unsqueeze(0).expand(3, -1, -1, -1).transpose(0, 1).squeeze(0)
-
-        return predicted_masks
+        return masks
     
     # Count pipeline trainable parameters
     def count_parameters(self):
