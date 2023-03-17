@@ -115,6 +115,7 @@ class TuSimple(Dataset):
         resized_gt_mask [resized_gt_mask !=0] = 255
         
         gt_transforms = transforms.Compose([transforms.ToTensor(),
+                                            transforms.Grayscale(num_output_channels=1),
                                             transforms.Resize(size = self.resize)])
         
         resized_gt_tensor = gt_transforms(seg_gt_mask)
