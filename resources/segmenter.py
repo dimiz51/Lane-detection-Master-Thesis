@@ -25,10 +25,10 @@ from vit import ViT
 import utils
 
 
-# Custom training function for the transformer pipeline with schedule and SGD optimizer
-def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, momentum=0.9, weight_decay=1e-4, lr_scheduler=True):
+## Custom training function for the transformer pipeline with schedule and SGD optimizer
+def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentum=0.9, weight_decay=0, lr_scheduler=True, lane_weight = None):
     # Set up loss function and optimizer
-    criterion =  nn.BCEWithLogitsLoss()
+    criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     
     # Set up learning rate scheduler

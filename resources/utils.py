@@ -30,3 +30,16 @@ def plot_img_pred(tensor, pred_mask):
     hori = np.concatenate((img, pred_mask), axis=1)
     disp_img(hori,'Image/Predicted Mask')
     
+
+# Calculate lane class weights for the training set
+def calculate_class_weight (train_set):
+    lane_pixels = 0
+    back_pixels = 0
+    
+    for img,gt in train_set:
+        lane_pixels += (gt == 1.).sum()
+        back_pixels += (gt == 0.).sum()
+    
+    pos_weight = back_pixels / lane_pixels
+    
+    return pos_weight.int()
