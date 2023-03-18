@@ -29,68 +29,11 @@ class DepthwiseSeparableConv2d(nn.Module):
         x = self.pointwise_conv(x)
         return x
 
-class MobileNetEncoder(nn.Module):
-    def __init__(self, in_channels=3):
-        super(MobileNetEncoder, self).__init__()
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, 8, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(8),
-            # nn.ReLU(inplace=True)
-        )
-        self.conv2 = nn.Sequential(
-            DepthwiseSeparableConv2d(8, 16),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(16, 16, kernel_size=1, stride=2, padding=0),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True)
-        )
-        self.conv3 = nn.Sequential(
-            DepthwiseSeparableConv2d(16, 16),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(16, 32, kernel_size=1, stride=2, padding=0),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True)
-        )
-        self.conv4 = nn.Sequential(
-            DepthwiseSeparableConv2d(32, 32),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 64, kernel_size=1, stride=2, padding=0),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True)
-        )
-        self.conv5 = nn.Sequential(
-            DepthwiseSeparableConv2d(64, 64),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, kernel_size=1, stride=2, padding=0),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True)
-        )
-        self.conv6 = nn.Sequential(
-            DepthwiseSeparableConv2d(128, 128),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 256, kernel_size=1, stride=2, padding=0),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True)
-        )
-
-    def forward(self, x):
-        x1 = self.conv1(x)
-        x2 = self.conv2(x1)
-        x3 = self.conv3(x2)
-        x4 = self.conv4(x3)
-        x5 = self.conv5(x4)
-        x6 = self.conv6(x5)
-        return x1, x2, x3, x4, x5, x6
-
 class UNet(nn.Module):
-    def __init__(self, n_channels=3, n_classes=2):
+    def __init__(self, n_channels=3, n_classes=1, output_act = nn.Sigmoid()):
         super(UNet, self).__init__()
-        
+        self.lane_threshold = 0.5
+        self.output_act = output_act
         # Encoder
         self.encoder = MobileNetEncoder(in_channels=n_channels)
         
@@ -175,7 +118,7 @@ class UNet(nn.Module):
             nn.Conv2d(8, 8, kernel_size=1),
             nn.BatchNorm2d(8))
         self.output_layer = nn.Conv2d(8, n_classes, kernel_size=1)
-        
+            
     def forward(self, x):
         # print("Input shape: ", x.shape)
         x1, x2, x3, x4, x5, x6 = self.encoder(x)
@@ -220,8 +163,24 @@ class UNet(nn.Module):
         # print("5 - Decoder layer shape: ", y1.shape)
 
         out = self.output_layer(y1)
+        # Training time
+        if self.training:
+            act = self.output_act
+            class_prob_masks = act(out)
+            predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
+            return out, predictions
+        # Evaluation time
+        else:
+            act = self.output_act
+            class_prob_masks = act(out)
+            # print(class_prob_masks)
+            predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
+            return predictions
         # print("6 - Output layer shape: ", out.shape)
-        return out
+        # return out
+    # Count pipeline trainable parameters
+    def count_parameters(self):
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
 
 # Set seed for randomize functions (Ez reproduction of results)
@@ -234,11 +193,13 @@ from tusimple import TuSimple
 import utils
 
 # Custom training function for the CNN pipeline with schedule and SGD optimizer
-def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, momentum=0.9, weight_decay=1e-4, lr_scheduler=True):
+def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentum=0.9, weight_decay=0.001, lr_scheduler=True, lane_weight = None):
     # Set up loss function and optimizer
-    criterion =  nn.BCEWithLogitsLoss()
+    criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-
+    # set threshold to identify lane pixels to calculate eval metrics
+    # LANE_THRESHOLD = 0.5
+    # sigm = nn.Sigmoid()
     # Set up learning rate scheduler
     if lr_scheduler:
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
@@ -259,32 +220,29 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
         val_f1 = 0
         
         for batch_idx, (inputs, targets) in enumerate(train_loader):
-            
+            model.train()
             inputs, targets = inputs.to(device), targets.to(device)
-            
+                   
             optimizer.zero_grad()
-            outputs = model(inputs)
-
-            outputs = torch.argmax(outputs, dim=1).unsqueeze(1).repeat(1,3,1,1).float()
-            outputs.requires_grad = True
-            # print(outputs.shape, targets.shape)
-            loss = criterion(outputs, targets)
+            outputs, eval_out = model(inputs)
+            
+            loss = criterion(outputs.to(device), targets)
             loss.backward()
             optimizer.step()
             
             
             train_loss += loss.item() * inputs.size(0)
-            train_iou += iou_score(outputs.detach(), targets)
-            train_f1 += f1_score(outputs.detach(), targets)
+            train_iou += iou_score(eval_out.to(device).detach(), targets)
+            train_f1 += f1_score(eval_out.to(device).detach(),targets)
             
         if val_loader:
             for batch_idx, (inputs, targets) in enumerate(train_loader): 
                 model.eval()
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
-                outputs = torch.argmax(outputs, dim=1).unsqueeze(1).repeat(1,3,1,1).float()
-                val_iou += iou_score(outputs, targets)
-                val_f1 += f1_score(outputs,targets)
+                
+                val_iou += iou_score(outputs.to(device), targets)
+                val_f1 += f1_score(outputs.to(device), targets)
         
             val_iou /= len(val_loader)
             val_f1 /= len(val_loader)
@@ -294,12 +252,13 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
         train_f1 /= len(train_loader)
         
         
+        
      # Print progress
         if lr_scheduler:
-            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.3f} - Train_F1: {:.3f}'.format(epoch+1, train_loss,scheduler.get_last_lr()[0], train_iou, train_f1))
+            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,scheduler.get_last_lr()[0], train_iou, train_f1))
             scheduler.step()
             if val_loader:
-                print('Val_F1: {:.3f}  - Val_IoU: {:.3f} '.format(val_f1,val_iou))
+                print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
             print('Epoch: {} - Train Loss: {:.4f}'.format(epoch+1, train_loss))
 
