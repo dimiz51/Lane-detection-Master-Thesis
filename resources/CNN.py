@@ -316,5 +316,5 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentu
             if val_loader:
                 print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
-            print('Epoch: {} - Train Loss: {:.4f}'.format(epoch+1, train_loss))
+            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, lr, train_iou, train_f1))
 
