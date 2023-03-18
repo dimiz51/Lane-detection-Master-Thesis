@@ -28,7 +28,63 @@ class DepthwiseSeparableConv2d(nn.Module):
         x = self.depthwise_conv(x)
         x = self.pointwise_conv(x)
         return x
+class MobileNetEncoder(nn.Module):
+    def __init__(self, in_channels=3):
+        super(MobileNetEncoder, self).__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_channels, 8, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(8),
+            # nn.ReLU(inplace=True)
+        )
+        self.conv2 = nn.Sequential(
+            DepthwiseSeparableConv2d(8, 16),
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 16, kernel_size=1, stride=2, padding=0),
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True)
+        )
+        self.conv3 = nn.Sequential(
+            DepthwiseSeparableConv2d(16, 16),
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 32, kernel_size=1, stride=2, padding=0),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True)
+        )
+        self.conv4 = nn.Sequential(
+            DepthwiseSeparableConv2d(32, 32),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, kernel_size=1, stride=2, padding=0),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True)
+        )
+        self.conv5 = nn.Sequential(
+            DepthwiseSeparableConv2d(64, 64),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 128, kernel_size=1, stride=2, padding=0),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True)
+        )
+        self.conv6 = nn.Sequential(
+            DepthwiseSeparableConv2d(128, 128),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 256, kernel_size=1, stride=2, padding=0),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True)
+        )
 
+    def forward(self, x):
+        x1 = self.conv1(x)
+        x2 = self.conv2(x1)
+        x3 = self.conv3(x2)
+        x4 = self.conv4(x3)
+        x5 = self.conv5(x4)
+        x6 = self.conv6(x5)
+        return x1, x2, x3, x4, x5, x6
 class UNet(nn.Module):
     def __init__(self, n_channels=3, n_classes=1, output_act = nn.Sigmoid()):
         super(UNet, self).__init__()
