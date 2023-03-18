@@ -31,10 +31,6 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
     criterion =  nn.BCEWithLogitsLoss()
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     
-    # set threshold to identify lane pixels to calculate eval metrics
-    LANE_THRESHOLD = 0.5
-    sigm = nn.Sigmoid()
-    
     # Set up learning rate scheduler
     if lr_scheduler:
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
@@ -60,19 +56,16 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
             inputs, targets = inputs.to(device), targets.to(device)
                    
             optimizer.zero_grad()
-            outputs = model(inputs)
+            outputs, eval_out = model(inputs)
             
-            eval_out = sigm(outputs.to(device).detach())
-            eval_out = torch.where(eval_out > LANE_THRESHOLD, torch.ones_like(eval_out), torch.zeros_like(eval_out))
-            
-            loss = criterion(outputs, targets)
+            loss = criterion(outputs.to(device), targets)
             loss.backward()
             optimizer.step()
             
             
             train_loss += loss.item() * inputs.size(0)
-            train_iou += iou_score(eval_out, targets)
-            train_f1 += f1_score(eval_out,targets)
+            train_iou += iou_score(eval_out.to(device).detach(), targets)
+            train_f1 += f1_score(eval_out.to(device).detach(),targets)
             
         if val_loader:
             for batch_idx, (inputs, targets) in enumerate(train_loader): 
@@ -80,11 +73,8 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
                 
-                eval_out = sigm(outputs.to(device).detach())
-                eval_out = torch.where(eval_out > LANE_THRESHOLD, torch.ones_like(eval_out), torch.zeros_like(eval_out))
-                
-                val_iou += iou_score(eval_out, targets)
-                val_f1 += f1_score(eval_out,targets)
+                val_iou += iou_score(outputs.to(device), targets)
+                val_f1 += f1_score(outputs.to(device),targets)
         
             val_iou /= len(val_loader)
             val_f1 /= len(val_loader)
@@ -97,10 +87,10 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, moment
         
      # Print progress
         if lr_scheduler:
-            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.3f} - Train_F1: {:.3f}'.format(epoch+1, train_loss,scheduler.get_last_lr()[0], train_iou, train_f1))
+            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,scheduler.get_last_lr()[0], train_iou, train_f1))
             scheduler.step()
             if val_loader:
-                print('Val_F1: {:.3f}  - Val_IoU: {:.3f} '.format(val_f1,val_iou))
+                print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
             print('Epoch: {} - Train Loss: {:.4f}'.format(epoch+1, train_loss))
             
@@ -113,6 +103,7 @@ class Segmenter(nn.Module):
         self.encoder = encoder
         self.decoder = mask_trans
         self.image_size = image_size
+        self.lane_threshold = 0.5
         
     # Forward pass of the pipeline
     def forward(self, im):
@@ -127,9 +118,17 @@ class Segmenter(nn.Module):
         # Interpolate patch level class annotatations to pixel level and transform to original image size
         masks = F.interpolate(masks, size=(H, W), mode="bilinear")
         
-        return masks
-    
+        if self.training:
+            act = nn.Sigmoid()
+            class_prob_masks = act(masks)
+            predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
+            return masks, predictions
+        else:
+            act = nn.Sigmoid()
+            masks = act(masks)
+            predictions = torch.where(masks > self.lane_threshold, torch.ones_like(masks), torch.zeros_like(masks))
+            return predictions
+        
     # Count pipeline trainable parameters
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
-    
