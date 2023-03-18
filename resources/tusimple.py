@@ -103,6 +103,8 @@ class TuSimple(Dataset):
     # Helper func to plot image and ground truth simultaneously
     def plot_img_gt(self, tensor, gt_mask):
         img = self.toImagearr(tensor) 
+        rgb_tensor = torch.stack((gt_mask,)*3, dim=1).squeeze(0)
+        gt_mask = self.toImagearr(rgb_tensor)
         Hori = np.concatenate((img, gt_mask), axis=1)
         self.disp_img(Hori,'Image/Ground Truth')
                
