@@ -97,13 +97,15 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentu
             
 # Segmenter pipeline class (ViT + Masks transformer end-to-end)
 class Segmenter(nn.Module):
-    def __init__(self,encoder, mask_trans, image_size = (640,640)):
+    def __init__(self,encoder, decoder, image_size = (640,640), output_act = nn.Sigmoid()):
         super().__init__()
         self.patch_size = encoder.patch_size
         self.encoder = encoder
-        self.decoder = mask_trans
+        self.decoder = decoder
         self.image_size = image_size
         self.lane_threshold = 0.5
+        self.output_act = output_act
+        
         
     # Forward pass of the pipeline
     def forward(self, im):
@@ -118,15 +120,18 @@ class Segmenter(nn.Module):
         # Interpolate patch level class annotatations to pixel level and transform to original image size
         masks = F.interpolate(masks, size=(H, W), mode="bilinear")
         
+        # Training time
         if self.training:
-            act = nn.Sigmoid()
+            act = self.output_act
             class_prob_masks = act(masks)
             predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
             return masks, predictions
+        # Evaluation time
         else:
-            act = nn.Sigmoid()
-            masks = act(masks)
-            predictions = torch.where(masks > self.lane_threshold, torch.ones_like(masks), torch.zeros_like(masks))
+            act = self.output_act
+            class_prob_masks = act(masks)
+            print(class_prob_masks)
+            predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
             return predictions
         
     # Count pipeline trainable parameters
