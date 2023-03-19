@@ -12,6 +12,7 @@ import torch.nn.init as init
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchmetrics import F1Score,JaccardIndex
+from torch_poly_lr_decay import PolynomialLRDecay
 
 # Set seed for randomize functions (Ez reproduction of results)
 random.seed(100)
@@ -23,24 +24,26 @@ from tusimple import TuSimple
 from mask_transformer import MaskTransformer
 from vit import ViT
 import utils
+from linear import DecoderLinear
 
 
-## Custom training function for the transformer pipeline with schedule and SGD optimizer
-def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentum=0.9, weight_decay=0, lr_scheduler=True, lane_weight = None):
+# Custom training function for the transformer pipeline with schedule and SGD optimizer
+def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momentum=0.9, weight_decay=0, lr_scheduler=True, lane_weight = None):
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     
     # Set up learning rate scheduler
     if lr_scheduler:
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+        # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+        scheduler = PolynomialLRDecay(optimizer, max_decay_steps=100, end_learning_rate=0.0001, power=0.9)
 
     # Set up device (GPU or CPU)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     
-    f1_score = F1Score(task="binary")
-    iou_score = JaccardIndex(task= 'binary')
+    f1_score = F1Score(task="binary").to(device)
+    iou_score = JaccardIndex(task= 'binary').to(device)
 
     # Train the model
     for epoch in range(num_epochs):
@@ -87,12 +90,12 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentu
         
      # Print progress
         if lr_scheduler:
-            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,scheduler.get_last_lr()[0], train_iou, train_f1))
+            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,optimizer.param_groups[0]['lr'], train_iou, train_f1))
             scheduler.step()
             if val_loader:
                 print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
-            print('Epoch: {} - Train Loss: {:.4f}'.format(epoch+1, train_loss))
+            print('Epoch: {} - Train Loss: {:.4f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, train_iou, train_f1))
             
             
 # Segmenter pipeline class (ViT + Masks transformer end-to-end)
@@ -130,7 +133,6 @@ class Segmenter(nn.Module):
         else:
             act = self.output_act
             class_prob_masks = act(masks)
-            print(class_prob_masks)
             predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
             return predictions
         

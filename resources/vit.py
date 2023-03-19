@@ -41,19 +41,19 @@ def generate_mapping_dict():
 
     return mapping
 
+
 # Resize the pretrained positional embeddings to desired dimensions
-def resizing_pos_pretrained(pretrained_dict, model_dict):
+def resize_pretrained_pos(pretrained_dict, new_num_patches):
     pretrained_pos_embedding = pretrained_dict['pos_embedding']
 
-    # Get new shape
-    new_pos_embedding = torch.zeros_like(model_dict['pos_embedding'])
-    new_shape = tuple(torch.zeros_like(model_dict['pos_embedding']).squeeze(0).shape)
+    # Scale the positional embeddings by the ratio
+    scaled_pos_embedding = F.interpolate(pretrained_pos_embedding.unsqueeze(0),
+                                         size=(new_num_patches, pretrained_pos_embedding.shape[2]),
+                                         mode='nearest').squeeze(0)
 
-    # Interpolate pre-trained embed to new size
-    new_pos_embedding =  F.interpolate(pretrained_pos_embedding.unsqueeze(0), size= new_shape, mode='bilinear', align_corners=False).squeeze(0)
+    # Create a new dictionary with the updated pos_embedding tensor
+    pretrained_dict['pos_embedding'] = scaled_pos_embedding
 
-    # Update the state_dict with the resized pos_embedding tensor
-    pretrained_dict['pos_embedding'] = new_pos_embedding
     return pretrained_dict
 
 # Patch embedding class
@@ -108,6 +108,7 @@ class ViT(nn.Module):
         
         # Define the positional embedding layer
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patches, dim))
+        self.pos_embedding = nn.init.trunc_normal_(self.pos_embedding,std= 0.02)
         
         # Define the transformer layers
         self.transformer = nn.TransformerEncoder(
@@ -142,12 +143,7 @@ class ViT(nn.Module):
         
         # Reshape the patches            
         x = x.flatten(2).transpose(1, 2)
-        
-        # Resize positional embeddings
-        if self.image_size != 224:
-            resized_size = self.image_size
-            self.resize_pos_embeds(resized_size)
-            
+                    
         # Dynamically expand pos embed across batch dimension
         if self.training:
             pos_embedding = nn.Parameter(self.pos_embedding.expand(x.shape[0], -1, -1))
@@ -176,20 +172,23 @@ class ViT(nn.Module):
         if return_features:
             return x
 
-    # Resize pos embeddings functionality for tuning the ViT to accept resized images
-    def resize_pos_embeds(self, new_image_size):
-        # Get the original size of the positional embeddings
-        orig_pos_embeds = self.pos_embedding
+    # Resize pos embeddings functionality for tuning the ViT to accept resized images (Probably unecessary)
+    # def resize_pos_embeds(self, new_image_size):
+    #     # Get the original size of the positional embeddings
+    #     orig_pos_embeds = self.pos_embedding
 
-        # Calculate the number of patches for the new image size
-        new_num_patches = (new_image_size // self.patch_size) ** 2
+    #     # Calculate the number of patches for the new image size
+    #     new_num_patches = (new_image_size // self.patch_size) ** 2
 
-        # Define the new size of the positional embeddings based on the new number of patches
-        new_embed_size = (new_num_patches, self.dim)  # Keep the same number of tokens
-        new_pos_embeds = F.interpolate(orig_pos_embeds.unsqueeze(0), size=new_embed_size).squeeze(0)
-
-        # Replace the original positional embeddings with the new ones
-        self.pos_embedding = nn.Parameter(new_pos_embeds)
+    #     # Define the new size of the positional embeddings based on the new number of patches
+    #     new_embed_size = (new_num_patches, self.dim)  # Keep the same number of tokens
+    #     new_pos_embeds = F.interpolate(orig_pos_embeds.unsqueeze(0), size=new_embed_size).squeeze(0)
+        
+    #     # Initiliaze resized pos embedds again
+    #     init.kaiming_normal_(new_pos_embeds, mode='fan_out', nonlinearity='relu')
+        
+    #     # Replace the original positional embeddings with the new ones
+    #     self.pos_embedding = nn.Parameter(new_pos_embeds)
         
     # Load pre-trained weights method
     def load_pretrained_weights(self, pretrained_path):
@@ -206,8 +205,8 @@ class ViT(nn.Module):
                 if key in model_state_dict:
                     new_state_dict[key] = pretrained[key]
 
-         # Test and see if resizing these is a good idea else keep the original randomly initialized weights
-        new_state_dict = resizing_pos_pretrained(new_state_dict,model_state_dict)  
+        # Test and see if resizing these is a good idea else keep the original randomly initialized weights
+        new_state_dict = resize_pretrained_pos(new_state_dict, new_num_patches= self.num_patches)
         
         # Load the mapped weights into our ViT model
         self.load_state_dict(new_state_dict)
