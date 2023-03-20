@@ -35,7 +35,6 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momen
     
     # Set up learning rate scheduler
     if lr_scheduler:
-        # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
         scheduler = PolynomialLRDecay(optimizer, max_decay_steps=100, end_learning_rate=0.0001, power=0.9)
 
     # Set up device (GPU or CPU)
@@ -71,7 +70,7 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momen
             train_f1 += f1_score(eval_out.to(device).detach(),targets)
             
         if val_loader:
-            for batch_idx, (inputs, targets) in enumerate(train_loader): 
+            for batch_idx, (inputs, targets) in enumerate(val_loader): 
                 model.eval()
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)

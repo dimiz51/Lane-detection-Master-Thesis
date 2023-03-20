@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import torch
 from torchmetrics import ConfusionMatrix
+from einops import rearrange
     
     
 # Helper func to transform back to array from tensor
@@ -43,3 +44,4 @@ def calculate_class_weight (train_set):
     pos_weight = back_pixels / lane_pixels
     
     return pos_weight.int()
+
