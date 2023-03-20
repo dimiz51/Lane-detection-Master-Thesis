@@ -45,3 +45,11 @@ def calculate_class_weight (train_set):
     
     return pos_weight.int()
 
+
+# Dice loss function
+def dice_loss(outputs, targets, smooth=1e-7):
+    intersection = (outputs * targets).sum()
+    union = outputs.sum() + targets.sum()
+    dice = (2 * intersection + smooth) / (union + smooth)
+    loss = 1 - dice
+    return loss
