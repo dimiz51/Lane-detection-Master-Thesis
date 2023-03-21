@@ -44,17 +44,26 @@ def generate_mapping_dict():
 
 # Resize the pretrained positional embeddings to desired dimensions
 def resize_pretrained_pos(pretrained_dict, new_num_patches):
+    
     pretrained_pos_embedding = pretrained_dict['pos_embedding']
+    pretrained_pos_embedding = pretrained_pos_embedding[:, 1:, :]
 
-    # Scale the positional embeddings by the ratio
-    scaled_pos_embedding = F.interpolate(pretrained_pos_embedding.unsqueeze(0),
-                                         size=(new_num_patches, pretrained_pos_embedding.shape[2]),
-                                         mode='nearest').squeeze(0)
+    if pretrained_pos_embedding.shape[1] - 1 !=  new_num_patches:
+        # Scale the positional embeddings by the ratio
+        scaled_pos_embedding = F.interpolate(pretrained_pos_embedding.unsqueeze(0),
+                                            size=(new_num_patches, pretrained_pos_embedding.shape[2]),
+                                            mode='nearest').squeeze(0)
 
-    # Create a new dictionary with the updated pos_embedding tensor
-    pretrained_dict['pos_embedding'] = scaled_pos_embedding
+        # Create a new dictionary with the updated pos_embedding tensor
+        pretrained_dict['pos_embedding'] = scaled_pos_embedding
 
-    return pretrained_dict
+        return pretrained_dict
+    else:
+        # Dispose the class token's pos embedding
+        pretrained_pos_embedding_n = pretrained_pos_embedding[:, 1:, :]
+        pretrained_dict['pos_embedding'] = pretrained_pos_embedding_n
+        print('Resizing wasn\'t necessary for pre-trained positional embeddings.')
+        return pretrained_dict
 
 # Patch embedding class
 class PatchEmbedding(nn.Module):
@@ -171,24 +180,6 @@ class ViT(nn.Module):
         
         if return_features:
             return x
-
-    # Resize pos embeddings functionality for tuning the ViT to accept resized images (Probably unecessary)
-    # def resize_pos_embeds(self, new_image_size):
-    #     # Get the original size of the positional embeddings
-    #     orig_pos_embeds = self.pos_embedding
-
-    #     # Calculate the number of patches for the new image size
-    #     new_num_patches = (new_image_size // self.patch_size) ** 2
-
-    #     # Define the new size of the positional embeddings based on the new number of patches
-    #     new_embed_size = (new_num_patches, self.dim)  # Keep the same number of tokens
-    #     new_pos_embeds = F.interpolate(orig_pos_embeds.unsqueeze(0), size=new_embed_size).squeeze(0)
-        
-    #     # Initiliaze resized pos embedds again
-    #     init.kaiming_normal_(new_pos_embeds, mode='fan_out', nonlinearity='relu')
-        
-    #     # Replace the original positional embeddings with the new ones
-    #     self.pos_embedding = nn.Parameter(new_pos_embeds)
         
     # Load pre-trained weights method
     def load_pretrained_weights(self, pretrained_path):
