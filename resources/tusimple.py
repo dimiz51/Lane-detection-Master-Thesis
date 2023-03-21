@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 from sklearn.model_selection import train_test_split
-
+from PIL import Image
 from torchvision.transforms import ToPILImage
 import json
 import numpy as np
@@ -111,19 +111,17 @@ class TuSimple(Dataset):
     # Get list of lists containing ground truth lane pixel values for all lanes with respect to the original number of lanes in the original gt
     def get_resized_gt(self, original_gt: dict, new_size = tuple):
         seg_gt_mask = self.generate_seg_mask(original_gt)
-        resized_gt_mask = cv2.resize(seg_gt_mask, new_size, interpolation = cv2.INTER_LINEAR)
-                
-        # Set all resized pixels color to white (thresholding)
-        resized_gt_mask [resized_gt_mask !=0] = 255
         
-        gt_transforms = transforms.Compose([transforms.ToTensor(),
-                                            transforms.Grayscale(num_output_channels=1),
-                                            transforms.Resize(size = self.resize)])
+        seg_gt_mask = Image.fromarray(np.uint8(seg_gt_mask)).convert('RGB')
         
+        gt_transforms = transforms.Compose([transforms.Resize(size = self.resize),
+                                            transforms.ToTensor(),
+                                            transforms.Grayscale(num_output_channels=1)
+                                            ])
+    
         resized_gt_tensor = gt_transforms(seg_gt_mask)
         resized_gt_tensor[resized_gt_tensor != 0] = 1
-        
-        # new_gt = {'ground_truth_mask': resized_gt_mask,'gt_tensor': resized_gt_tensor.float(),'raw_file': original_gt['raw_file']}
+
         new_gt = resized_gt_tensor.float()
         
         return new_gt
@@ -145,10 +143,11 @@ class TuSimple(Dataset):
         # Load images, resize inputs, generate resized ground truth seg masks,transform to tensors and generate dataset (or subset)
         for gt in train_gt:
             img_path = gt['raw_file']
-            train_transforms = transforms.Compose([transforms.ToTensor(),
-                                                   transforms.Resize(size = self.resize)])
+            train_transforms = transforms.Compose([transforms.Resize(size = self.resize),
+                                                   transforms.ToTensor()
+                                                   ])
             image = cv2.imread(os.path.join(self.train_dir, img_path))
-            
+            image = Image.fromarray(np.uint8(image)).convert('RGB')
             img_tensor = train_transforms(image)
             train_set.append(img_tensor)
         

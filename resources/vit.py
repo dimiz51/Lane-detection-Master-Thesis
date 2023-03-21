@@ -111,7 +111,6 @@ class ViT(nn.Module):
         patch_dim = 3 * patch_size ** 2
 
         # Define the patch embedding layer
-        # self.patch_embedding = nn.Conv2d(in_channels=3, out_channels=dim, kernel_size=patch_size, stride=patch_size)
         self.patch_embedding = PatchEmbedding((self.image_size,self.image_size),self.patch_size,self.dim, 3)
         
         
@@ -165,13 +164,7 @@ class ViT(nn.Module):
             # Add the positional embeddings and use dropout
             x = (x.reshape(x.shape[0], -1, 768) + pos_embedding)
             x = self.dropout(x)
-            
-            # Predict for one sample
-            # pos_embedding = self.pos_embedding
-            # # Add the positional embeddings and use dropout
-            # x = (x.reshape(1, -1, 768) + pos_embedding)
-            # x = self.dropout(x)
-        
+                    
         # Apply the transformer layers
         x = self.transformer(x)
         
@@ -209,3 +202,10 @@ class ViT(nn.Module):
                 param.requires_grad = False
     
     
+    
+                
+            # Predict for one sample
+            # pos_embedding = self.pos_embedding
+            # # Add the positional embeddings and use dropout
+            # x = (x.reshape(1, -1, 768) + pos_embedding)
+            # x = self.dropout(x)

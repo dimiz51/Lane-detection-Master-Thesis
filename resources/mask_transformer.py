@@ -13,7 +13,7 @@ from einops import rearrange
 
 # Masks transformer class
 class MaskTransformer(nn.Module):
-    def __init__(self, image_size = (640,640) ,n_classes = 2, patch_size = 16, depth = 6 ,heads = 8, dim_enc = 768, dim_dec = 512, mlp_dim = 1024, dropout = 0.1):
+    def __init__(self, image_size = (640,640) ,n_classes = 2, patch_size = 16, depth = 6 ,heads = 8, dim_enc = 768, dim_dec = 768, mlp_dim = 3072, dropout = 0.1):
         super(MaskTransformer, self).__init__()
         self.dim = dim_enc
         self.patch_size = patch_size
