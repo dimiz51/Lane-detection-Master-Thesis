@@ -68,7 +68,7 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momen
             train_loss += loss.item() * inputs.size(0)
             train_iou += iou_score(eval_out.to(device).detach(), targets)
             train_f1 += f1_score(eval_out.to(device).detach(),targets)
-            
+        
         if val_loader:
             for batch_idx, (inputs, targets) in enumerate(val_loader): 
                 model.eval()
@@ -97,16 +97,17 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momen
             print('Epoch: {} - Train Loss: {:.4f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, train_iou, train_f1))
             
             
-# Segmenter pipeline class (ViT + Masks transformer end-to-end)
+# Segmenter pipeline class (ViT + Masks predictor end-to-end)
 class Segmenter(nn.Module):
-    def __init__(self,encoder, decoder, image_size = (640,640), output_act = nn.Sigmoid()):
+    def __init__(self,encoder, decoder, image_size = (640,640), output_act = nn.Sigmoid(), find_threshold = False):
         super().__init__()
         self.patch_size = encoder.patch_size
         self.encoder = encoder
         self.decoder = decoder
         self.image_size = image_size
-        self.lane_threshold = 0.5
+        self.lane_threshold = 0
         self.output_act = output_act
+        self.roc_flag = find_threshold
         
         
     # Forward pass of the pipeline
@@ -118,6 +119,7 @@ class Segmenter(nn.Module):
         
         # Pass through the masks transformer
         masks = self.decoder(x)
+        
 
         # Interpolate patch level class annotatations to pixel level and transform to original image size
         masks = F.interpolate(masks, size=(H, W), mode="bilinear")
@@ -126,15 +128,23 @@ class Segmenter(nn.Module):
         if self.training:
             act = self.output_act
             class_prob_masks = act(masks)
-            predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
+            predictions = torch.where(class_prob_masks > self.lane_threshold,torch.zeros_like(class_prob_masks),torch.ones_like(class_prob_masks))
             return masks, predictions
-        # Evaluation time
+        
+        elif self.roc_flag and not self.training:
+            act = self.output_act
+            class_prob_masks = act(masks)
+            return class_prob_masks
         else:
             act = self.output_act
             class_prob_masks = act(masks)
-            predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
+            predictions = torch.where(class_prob_masks > self.lane_threshold,torch.zeros_like(class_prob_masks),torch.ones_like(class_prob_masks))
             return predictions
         
     # Count pipeline trainable parameters
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+    
+    # Load trained model
+    def load_segmenter(self,path):
+        self.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
