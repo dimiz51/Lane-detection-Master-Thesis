@@ -195,11 +195,13 @@ class ViT(nn.Module):
         # Load the mapped weights into our ViT model
         self.load_state_dict(new_state_dict)
         print('Succesfully created ViT with pre-trained weights...!')
-        
+    
+    # Freeze all layers except some
     def freeze_all_but_some(self, parameter_names):
         for name, param in self.named_parameters():
             if name not in parameter_names:
                 param.requires_grad = False
+    
     
     
     

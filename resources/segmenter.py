@@ -13,6 +13,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchmetrics import F1Score,JaccardIndex
 from torch_poly_lr_decay import PolynomialLRDecay
+import torchvision.transforms as transforms
 
 # Set seed for randomize functions (Ez reproduction of results)
 random.seed(100)
@@ -26,13 +27,12 @@ from vit import ViT
 import utils
 from linear import DecoderLinear
 
-
-# Custom training function for the transformer pipeline with schedule and SGD optimizer
-def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momentum=0.9, weight_decay=0, lr_scheduler=True, lane_weight = None):
+# Custom training function for the transformer pipeline with schedule and augmentations
+def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight_decay=0, lr_scheduler=True, lane_weight = None):
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
-    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=weight_decay)
+
     # Set up learning rate scheduler
     if lr_scheduler:
         scheduler = PolynomialLRDecay(optimizer, max_decay_steps=100, end_learning_rate=0.0001, power=0.9)
@@ -43,6 +43,11 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momen
     
     f1_score = F1Score(task="binary").to(device)
     iou_score = JaccardIndex(task= 'binary').to(device)
+    
+    train_augmentations = transforms.Compose([transforms.RandomRotation(degrees=20),
+                                              transforms.RandomHorizontalFlip(),
+                                              transforms.RandomResizedCrop(size=(640, 640), scale=(0.8, 1.2))
+                                            ])
 
     # Train the model
     for epoch in range(num_epochs):
@@ -55,31 +60,45 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momen
         
         for batch_idx, (inputs, targets) in enumerate(train_loader):
             model.train()
-            inputs, targets = inputs.to(device), targets.to(device)
+            # inputs, targets = inputs.to(device), targets.to(device)
+            
+            augmented_imgs = []
+            augmented_gts = []
+            
+            #Set a seed for augmentations and apply them to batch images and gts
+            for i in range(0,len(inputs)):           
+                torch.manual_seed(1) 
+                random.seed(1) 
+                augmented_imgs.append(train_augmentations(inputs[i]))
+                augmented_gts.append(train_augmentations(targets[i]))
+    
+            inputs = torch.stack(augmented_imgs).to(device)
+            targets = torch.stack(augmented_gts).to(device)
                    
             optimizer.zero_grad()
             outputs, eval_out = model(inputs)
-            
+
             loss = criterion(outputs.to(device), targets)
             loss.backward()
             optimizer.step()
-            
             
             train_loss += loss.item() * inputs.size(0)
             train_iou += iou_score(eval_out.to(device).detach(), targets)
             train_f1 += f1_score(eval_out.to(device).detach(),targets)
         
         if val_loader:
-            for batch_idx, (inputs, targets) in enumerate(val_loader): 
-                model.eval()
-                inputs, targets = inputs.to(device), targets.to(device)
-                outputs = model(inputs)
+            model.eval()
+            with torch.no_grad():
+                for batch_idx, (inputs, targets) in enumerate(val_loader): 
                 
-                val_iou += iou_score(outputs.to(device), targets)
-                val_f1 += f1_score(outputs.to(device),targets)
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    outputs = model(inputs)
+                
+                    val_iou += iou_score(outputs.to(device), targets)
+                    val_f1 += f1_score(outputs.to(device),targets)
         
-            val_iou /= len(val_loader)
-            val_f1 /= len(val_loader)
+                val_iou /= len(val_loader)
+                val_f1 /= len(val_loader)
             
         train_loss /= len(train_loader)
         train_iou /= len(train_loader)
@@ -96,18 +115,20 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.001, momen
         else:
             print('Epoch: {} - Train Loss: {:.4f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, train_iou, train_f1))
             
-            
 # Segmenter pipeline class (ViT + Masks predictor end-to-end)
 class Segmenter(nn.Module):
-    def __init__(self,encoder, decoder, image_size = (640,640), output_act = nn.Sigmoid(), find_threshold = False):
+    def __init__(self,encoder, decoder, image_size = (640,640), output_act = 'sigmoid', find_threshold = False):
         super().__init__()
         self.patch_size = encoder.patch_size
         self.encoder = encoder
         self.decoder = decoder
         self.image_size = image_size
-        self.lane_threshold = 0
-        self.output_act = output_act
+        self.lane_threshold = 0.5
         self.roc_flag = find_threshold
+        if output_act == 'sigmoid':
+            self.activation = nn.Sigmoid()   
+        elif output_act == 'relu':
+            self.activation = nn.ReLU()
         
         
     # Forward pass of the pipeline
@@ -126,19 +147,16 @@ class Segmenter(nn.Module):
         
         # Training time
         if self.training:
-            act = self.output_act
-            class_prob_masks = act(masks)
-            predictions = torch.where(class_prob_masks > self.lane_threshold,torch.zeros_like(class_prob_masks),torch.ones_like(class_prob_masks))
+            class_prob_masks = self.activation(masks)
+            predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
             return masks, predictions
         
         elif self.roc_flag and not self.training:
-            act = self.output_act
-            class_prob_masks = act(masks)
+            class_prob_masks = self.activation(masks)
             return class_prob_masks
         else:
-            act = self.output_act
-            class_prob_masks = act(masks)
-            predictions = torch.where(class_prob_masks > self.lane_threshold,torch.zeros_like(class_prob_masks),torch.ones_like(class_prob_masks))
+            class_prob_masks = self.activation(masks)
+            predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
             return predictions
         
     # Count pipeline trainable parameters
@@ -146,5 +164,5 @@ class Segmenter(nn.Module):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
     # Load trained model
-    def load_segmenter(self,path):
+    def load_segmenter(self,path):    
         self.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
