@@ -16,7 +16,7 @@ from torch_poly_lr_decay import PolynomialLRDecay
 import torchvision.transforms as transforms
 
 # Set seed for randomize functions (Ez reproduction of results)
-random.seed(100)
+random.seed(1)
 
 # Import TuSimple loader
 import sys
@@ -44,11 +44,13 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
     f1_score = F1Score(task="binary").to(device)
     iou_score = JaccardIndex(task= 'binary').to(device)
     
-    train_augmentations = transforms.Compose([transforms.RandomRotation(degrees=20),
-                                              transforms.RandomHorizontalFlip(),
-                                              transforms.RandomResizedCrop(size=(640, 640), scale=(0.8, 1.2))
-                                            ])
-
+    train_augmentations = transforms.Compose([transforms.RandomRotation(degrees=(10, 30)),
+                                         transforms.RandomHorizontalFlip()])
+    
+        
+    # Set a seed for augmentations
+    torch.manual_seed(42) 
+    
     # Train the model
     for epoch in range(num_epochs):
         train_loss = 0
@@ -62,19 +64,17 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
             model.train()
             # inputs, targets = inputs.to(device), targets.to(device)
             
-            augmented_imgs = []
-            augmented_gts = []
-            
-            #Set a seed for augmentations and apply them to batch images and gts
-            for i in range(0,len(inputs)):           
-                torch.manual_seed(1) 
-                random.seed(1) 
-                augmented_imgs.append(train_augmentations(inputs[i]))
-                augmented_gts.append(train_augmentations(targets[i]))
+            # Combine the inputs and targets into a single tensor
+            data = torch.cat((inputs, targets), dim=1)
     
-            inputs = torch.stack(augmented_imgs).to(device)
-            targets = torch.stack(augmented_gts).to(device)
-                   
+            
+            # Apply the same augmentations to the combined tensor
+            augmented_data = train_augmentations(data)    
+    
+            # Split the augmented data back into individual inputs and targets
+            inputs = augmented_data[:, :inputs.size(1)].to(device)
+            targets = augmented_data[:, inputs.size(1):].to(device)
+      
             optimizer.zero_grad()
             outputs, eval_out = model(inputs)
 

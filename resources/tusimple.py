@@ -154,7 +154,7 @@ class TuSimple(Dataset):
         return train_set, resized_train_gt   
     
     # Generate train and validation splits dynamically (after this operation use del dataset to free memory)
-    def train_val_split(self,transform_train = True):
+    def train_val_split(self):
         X = self.train_dataset
         Y = self.train_gt
         
