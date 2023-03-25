@@ -45,7 +45,7 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
     iou_score = JaccardIndex(task= 'binary').to(device)
     
     train_augmentations = transforms.Compose([transforms.RandomRotation(degrees=(10, 30)),
-                                         transforms.RandomHorizontalFlip()])
+                                              transforms.RandomHorizontalFlip()])
     
         
     # Set a seed for augmentations

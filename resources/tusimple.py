@@ -7,6 +7,7 @@ from torchvision import transforms
 from sklearn.model_selection import train_test_split
 from PIL import Image
 from torchvision.transforms import ToPILImage
+from torchvision.transforms import InterpolationMode
 import json
 import numpy as np
 import random
@@ -31,22 +32,26 @@ class BaseSplitClass(Dataset):
 # Full Size: Train(3626 clips/ 20 frames per clip/ 20th only is annotated), Test(2782 clips/ 20 frames per clip/ 20th only annotated)
 # Link: https://github.com/TuSimple/tusimple-benchmark/tree/master/doc/lane_detection
 class TuSimple(Dataset):  
-    def __init__(self, train_annotations : list, train_img_dir: str, resize_to : tuple , subset_size = 0.2, image_size = (1280,720), val_size = 0.15):
+    def __init__(self, train_annotations : list, train_img_dir: str, resize_to : tuple , subset_size = 0.2, image_size = (1280,720), val_size = 0):
         self.images_size = image_size
         self.resize = resize_to
-        self.val_size = val_size
         self.subset = subset_size
         self.train_dir = train_img_dir
         self.complete_gt = train_annotations
         self.complete_size = len(train_annotations)
+        self.sf_w = round(resize_to[1] / 1280, 4)
+        self.sf_h = round(resize_to[0] / 720, 4)
+        self.val_size = val_size
         self.train_dataset, self.train_gt = self.generate_dataset()
-        
+
+
     def __len__(self):
         if len(self.train_dataset) == len(self.train_gt):
             return len(self.train_gt)
         else:
             return "Dataset generation failure: Size of training images does not match the existing ground truths."
     
+    # return element from the trainset
     def __getitem__(self, idx):
         if len(self.train_dataset) == len(self.train_gt):
             img_tensor = self.train_dataset[idx]
@@ -60,7 +65,6 @@ class TuSimple(Dataset):
         image_path = ground_truth['raw_file']
         image = cv2.imread(os.path.join(self.train_dir,image_path))
         
-        masks = np.zeros_like(image[:,:,0])
         nolane_token = -2 
         h_vals = ground_truth['h_samples']
         lanes = ground_truth['lanes']
@@ -75,13 +79,26 @@ class TuSimple(Dataset):
                     x_coords.append(lane[i])
                     y_coords.append(h_vals[i])
                     lane_markings = list(zip(x_coords, y_coords))
-            lane_markings_list.append(lane_markings)        
-        for z in lane_markings_list:
-            for x,y in z:
-                masks[y,x] = 1
-        seg_mask = cv2.bitwise_and(image, image, mask=masks)
-        seg_mask [seg_mask != 0] = lane_val
-        return seg_mask  
+            lane_markings_list.append(lane_markings)  
+        
+        # Find resized lane anchor points
+        resized_lanes = []
+    
+        for lane in lane_markings_list:
+            resized_lane = []
+            for c in lane:
+                new_c = (int(c[0] * self.sf_w), int(c[1] * self.sf_h))
+                resized_lane.append(new_c)
+            resized_lanes.append(resized_lane)
+        
+        # Create empty black mask for ground truth
+        resized_mask = np.zeros(self.resize,dtype= np.uint8)
+        
+        # loop through the lane points and draw thickened white polylines for each lane
+        for lane_points_resized in resized_lanes:
+            cv2.polylines(resized_mask, [np.array(lane_points_resized)], isClosed=False, color=(255, 255, 255), thickness=5)
+              
+        return resized_mask  
 
 
     # Returns original image size for the dataset    
@@ -112,15 +129,11 @@ class TuSimple(Dataset):
     def get_resized_gt(self, original_gt: dict, new_size = tuple):
         seg_gt_mask = self.generate_seg_mask(original_gt)
         
-        seg_gt_mask = Image.fromarray(np.uint8(seg_gt_mask)).convert('RGB')
+        seg_gt_mask = Image.fromarray(np.uint8(seg_gt_mask))
         
-        gt_transforms = transforms.Compose([transforms.Resize(size = self.resize),
-                                            transforms.ToTensor(),
-                                            transforms.Grayscale(num_output_channels=1)
-                                            ])
+        gt_transforms = transforms.Compose([transforms.ToTensor()])
     
         resized_gt_tensor = gt_transforms(seg_gt_mask)
-        resized_gt_tensor[resized_gt_tensor != 0] = 1
 
         new_gt = resized_gt_tensor.float()
         
@@ -143,11 +156,11 @@ class TuSimple(Dataset):
         # Load images, resize inputs, generate resized ground truth seg masks,transform to tensors and generate dataset (or subset)
         for gt in train_gt:
             img_path = gt['raw_file']
-            train_transforms = transforms.Compose([transforms.Resize(size = self.resize),
+            train_transforms = transforms.Compose([transforms.Resize(size = self.resize,interpolation=InterpolationMode.BICUBIC),
                                                    transforms.ToTensor()
                                                    ])
             image = cv2.imread(os.path.join(self.train_dir, img_path))
-            image = Image.fromarray(np.uint8(image)).convert('RGB')
+            image = Image.fromarray(np.uint8(image))
             img_tensor = train_transforms(image)
             train_set.append(img_tensor)
         
@@ -165,5 +178,6 @@ class TuSimple(Dataset):
         validation_set = BaseSplitClass(X_val,Y_val)
         
         return train_set, validation_set
+        
         
 

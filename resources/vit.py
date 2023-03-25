@@ -9,9 +9,37 @@ import os
 import json
 import math
 import torch.nn.init as init
+from torchvision.models import ViT_B_16_Weights
 
 # Set seed for randomize functions (Ez reproduction of results)
 random.seed(100)
+
+# Map the 384 image size pretrained ViT to the 224 format for compatibility with the pretrained weights load function
+def generate_map384():
+        map_384 = {
+                'encoder.ln.weight' : 'norm.weight',
+                'encoder.ln.bias': 'norm.bias',
+                'encoder.pos_embedding': 'pos_embedding',
+                'conv_proj.weight': 'patch_embedding.proj.weight',
+                'conv_proj.bias': 'patch_embedding.proj.bias', 
+                }
+        
+        for i in range(12):
+                prefix = f'encoder.layers.encoder_layer_{i}.'
+                map_384[f'{prefix}ln_1.bias'] = f'transformer.layers.{i}.norm1.bias'
+                map_384[f'{prefix}ln_1.weight'] = f'transformer.layers.{i}.norm1.weight'
+                map_384[f'{prefix}ln_2.bias'] = f'transformer.layers.{i}.norm2.bias'
+                map_384[f'{prefix}ln_2.weight'] =  f'transformer.layers.{i}.norm2.weight'
+                map_384[f'{prefix}mlp.linear_1.bias'] = f'transformer.layers.{i}.linear1.bias'
+                map_384[f'{prefix}mlp.linear_1.weight'] = f'transformer.layers.{i}.linear1.weight'
+                map_384[f'{prefix}mlp.linear_2.bias'] = f'transformer.layers.{i}.linear2.bias'  
+                map_384[f'{prefix}mlp.linear_2.weight'] = f'transformer.layers.{i}.linear2.weight'
+                map_384[f'{prefix}self_attention.out_proj.bias'] = f'transformer.layers.{i}.self_attn.out_proj.bias'
+                map_384[f'{prefix}self_attention.out_proj.weight'] =f'transformer.layers.{i}.self_attn.out_proj.weight'
+                map_384[f'{prefix}self_attention.in_proj_bias'] = f'transformer.layers.{i}.self_attn.in_proj_bias'
+                map_384[f'{prefix}self_attention.in_proj_weight'] =f'transformer.layers.{i}.self_attn.in_proj_weight'
+
+        return map_384
 
 # Generate the mapping dict renaming the pretrained weights layers names to the desired format
 def generate_mapping_dict():
@@ -175,9 +203,14 @@ class ViT(nn.Module):
             return x
         
     # Load pre-trained weights method
-    def load_pretrained_weights(self, pretrained_path):
-        map_dict = generate_mapping_dict()
-        pretrained = torch.load(pretrained_path)
+    def load_pretrained_weights(self, pretrained_path: None):
+        if pretrained_path:
+            map_dict = generate_mapping_dict()
+            pretrained = torch.load(pretrained_path)
+        else:
+            map_dict = generate_map384()
+            pretrained = ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1.get_state_dict(progress= True)
+            print('yes')
         model_state_dict = self.state_dict()
     
         # create new state dict with mapped keys
@@ -189,18 +222,24 @@ class ViT(nn.Module):
                 if key in model_state_dict:
                     new_state_dict[key] = pretrained[key]
 
-        # Test and see if resizing these is a good idea else keep the original randomly initialized weights
-        new_state_dict = resize_pretrained_pos(new_state_dict, new_num_patches= self.num_patches)
+         # Test and see if resizing these is a good idea else keep the original randomly initialized weights
+        new_state_dict = resize_pretrained_pos(new_state_dict, new_num_patches= self.num_patches) 
         
         # Load the mapped weights into our ViT model
-        self.load_state_dict(new_state_dict)
+        self.load_state_dict(new_state_dict, strict= True)
         print('Succesfully created ViT with pre-trained weights...!')
-    
+        
     # Freeze all layers except some
     def freeze_all_but_some(self, parameter_names):
         for name, param in self.named_parameters():
             if name not in parameter_names:
                 param.requires_grad = False
+                
+    # Unfreeze some weights
+    def unfreeze_some(self, parameter_names):
+        for name, param in self.named_parameters():
+            if name in parameter_names:
+                param.requires_grad = True
     
     
     
