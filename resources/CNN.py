@@ -207,7 +207,7 @@ class UNet(nn.Module):
         # Conv2
         y1 = self.decoder_block1_2(y1)
         # print("5 - Decoder layer shape: ", y1.shape)
-
+        y1 = self.C3_layer(y1)
         out = self.output_layer(y1)
         # Training time
         if self.training:
@@ -258,7 +258,7 @@ import torchvision.transforms as transforms
 def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentum=0.9, weight_decay=0.001, lr_scheduler=True, lane_weight = None):
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
-    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
     # Set up learning rate scheduler
     if lr_scheduler:
