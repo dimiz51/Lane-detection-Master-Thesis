@@ -1,23 +1,10 @@
 import torch
 import torch.nn as nn
 from torchsummary import summary
-import argparse
-import json
-import os
-import shutil
-import time
-import numpy as np
+import matplotlib.pyplot as plt
 import random
-import cv2
-import os
-import json
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from torchmetrics import F1Score,JaccardIndex
-
-
-
+# print(torch.__version__)
+# print(torch.cuda.is_available())
 class DepthwiseSeparableConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
         super(DepthwiseSeparableConv2d, self).__init__()
@@ -28,6 +15,7 @@ class DepthwiseSeparableConv2d(nn.Module):
         x = self.depthwise_conv(x)
         x = self.pointwise_conv(x)
         return x
+
 class MobileNetEncoder(nn.Module):
     def __init__(self, in_channels=3):
         super(MobileNetEncoder, self).__init__()
@@ -85,11 +73,13 @@ class MobileNetEncoder(nn.Module):
         x5 = self.conv5(x4)
         x6 = self.conv6(x5)
         return x1, x2, x3, x4, x5, x6
+
 class UNet(nn.Module):
-    def __init__(self, n_channels=3, n_classes=1, output_act = nn.Sigmoid()):
+    def __init__(self, n_channels=3, n_classes=1, output_act = nn.Sigmoid(), find_threshold = False):
         super(UNet, self).__init__()
         self.lane_threshold = 0.5
         self.output_act = output_act
+        self.roc_flag = find_threshold
         # Encoder
         self.encoder = MobileNetEncoder(in_channels=n_channels)
         
@@ -225,18 +215,30 @@ class UNet(nn.Module):
             class_prob_masks = act(out)
             predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
             return out, predictions
+            # return class_prob_masks
+        elif self.roc_flag and not self.training:
+            act = self.output_act
+            class_prob_masks = act(out)
+            return class_prob_masks
         # Evaluation time
         else:
             act = self.output_act
             class_prob_masks = act(out)
+            # Flatten the tensor into a 1D array
+            x_flat = class_prob_masks.detach().cpu().numpy().flatten()
+            # Plot a histogram of the tensor values
+            plt.hist(x_flat, bins=100)
+            plt.show()
             # print(class_prob_masks)
             predictions = torch.where(class_prob_masks > self.lane_threshold, torch.ones_like(class_prob_masks), torch.zeros_like(class_prob_masks))
+            # return predictions
             return predictions
         # print("6 - Output layer shape: ", out.shape)
         # return out
     # Count pipeline trainable parameters
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+    
     
 
 # Set seed for randomize functions (Ez reproduction of results)
@@ -247,27 +249,36 @@ import sys
 sys.path.insert(0,'../resources/')
 from tusimple import TuSimple
 import utils
-
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from torchmetrics import F1Score,JaccardIndex
+import torchvision.transforms as transforms
 # Custom training function for the CNN pipeline with schedule and SGD optimizer
 def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentum=0.9, weight_decay=0.001, lr_scheduler=True, lane_weight = None):
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
-    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    # set threshold to identify lane pixels to calculate eval metrics
-    # LANE_THRESHOLD = 0.5
-    # sigm = nn.Sigmoid()
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=weight_decay)
+
     # Set up learning rate scheduler
     if lr_scheduler:
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+        scheduler = PolynomialLRDecay(optimizer, max_decay_steps=100, end_learning_rate=0.0001, power=0.9)
 
+    # Set up device (GPU or CPU)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
+    
     f1_score = F1Score(task="binary").to(device)
     iou_score = JaccardIndex(task= 'binary').to(device)
+    
+    train_augmentations = transforms.Compose([transforms.RandomRotation(degrees=(10, 30)),
+                                              transforms.RandomHorizontalFlip()])
+    
+    # Set a seed for augmentations
+    torch.manual_seed(42) 
+    
     # Train the model
     for epoch in range(num_epochs):
-        # Train for one epoch
-        # model.train()
         train_loss = 0
         train_iou = 0
         train_f1 = 0
@@ -275,13 +286,20 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentu
         val_iou = 0
         val_f1 = 0
         
+            
         for batch_idx, (inputs, targets) in enumerate(train_loader):
             model.train()
-            inputs, targets = inputs.to(device), targets.to(device)
-                   
+            # Combine the inputs and targets into a single tensor
+            data = torch.cat((inputs, targets), dim=1)
+            # Apply the same augmentations to the combined tensor
+            augmented_data = train_augmentations(data)    
+    
+            # Split the augmented data back into individual inputs and targets
+            inputs = augmented_data[:, :inputs.size(1)].to(device)
+            targets = augmented_data[:, inputs.size(1):].to(device)
+      
             optimizer.zero_grad()
             outputs, eval_out = model(inputs)
-            
             loss = criterion(outputs.to(device), targets)
             loss.backward()
             optimizer.step()
@@ -292,16 +310,18 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentu
             train_f1 += f1_score(eval_out.to(device).detach(),targets)
             
         if val_loader:
-            for batch_idx, (inputs, targets) in enumerate(train_loader): 
-                model.eval()
-                inputs, targets = inputs.to(device), targets.to(device)
-                outputs = model(inputs)
+            model.eval()
+            with torch.no_grad():
+                for batch_idx, (inputs, targets) in enumerate(val_loader): 
                 
-                val_iou += iou_score(outputs.to(device), targets)
-                val_f1 += f1_score(outputs.to(device), targets)
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    outputs = model(inputs)
+                
+                    val_iou += iou_score(outputs.to(device), targets)
+                    val_f1 += f1_score(outputs.to(device),targets)
         
-            val_iou /= len(val_loader)
-            val_f1 /= len(val_loader)
+                val_iou /= len(val_loader)
+                val_f1 /= len(val_loader)
             
         train_loss /= len(train_loader)
         train_iou /= len(train_loader)
@@ -311,10 +331,9 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, momentu
         
      # Print progress
         if lr_scheduler:
-            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,scheduler.get_last_lr()[0], train_iou, train_f1))
+            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,optimizer.param_groups[0]['lr'], train_iou, train_f1))
             scheduler.step()
             if val_loader:
                 print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
-            print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, lr, train_iou, train_f1))
-
+            print('Epoch: {} - Train Loss: {:.4f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, train_iou, train_f1))
