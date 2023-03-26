@@ -4,8 +4,39 @@ import torch.nn.functional as F
 from torchmetrics import F1Score,JaccardIndex
 from torchvision import transforms
 import torch.optim as optim
+import matplotlib.pyplot as plt
 
+# Plot metrics function 
+def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou):
+    # Plot training and validation losses
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, len(train_losses) + 1), train_losses, label='Train')
+    plt.plot(range(1, len(val_losses) + 1), val_losses, label='Validation')
+    plt.xlabel('Epochs (bins of 5)')
+    plt.ylabel('Loss')
+    plt.xticks(range(0, len(train_losses) + 1, 5))
+    plt.legend()
+    plt.show()
 
+    # Plot training and validation F1 scores
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, len(train_f1) + 1), train_f1, label='Train')
+    plt.plot(range(1, len(val_f1) + 1), val_f1, label='Validation')
+    plt.xlabel('Epochs (bins of 5)')
+    plt.ylabel('F1 Score')
+    plt.xticks(range(0, len(train_f1) + 1, 5))
+    plt.legend()
+    plt.show()
+
+    # Plot training and validation IoU scores
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, len(train_iou) + 1), train_iou, label='Train')
+    plt.plot(range(1, len(val_iou) + 1), val_iou, label='Validation')
+    plt.xlabel('Epochs (bins of 5)')
+    plt.ylabel('IoU Score')
+    plt.xticks(range(0, len(train_iou) + 1, 5))
+    plt.legend()
+    plt.show()
 
 # Custom training function for the transformer pipeline with schedule and augmentations
 def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight_decay=0, SGD_momentum = 0.9, lr_scheduler=False, lane_weight = None):
@@ -24,11 +55,22 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
     f1_score = F1Score(task="binary").to(device)
     iou_score = JaccardIndex(task= 'binary').to(device)
     
-    train_augmentations = transforms.Compose([transforms.RandomRotation(degrees=(10, 30)),
+    gt_augmentations = transforms.Compose([transforms.RandomRotation(degrees=(10, 30)),
                                               transforms.RandomHorizontalFlip()])
-    
+  
+    train_augmentations = transforms.Compose([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
+                                            transforms.ColorJitter(brightness=0.35, contrast=0.2, saturation=0.4, hue=0.1)])
     # Set a seed for augmentations
     torch.manual_seed(42) 
+    
+    # Metrics collection for plotting
+    train_losses = []
+    train_f1_scores = []
+    train_iou_scores = []
+    
+    val_losses = []
+    val_f1_scores = []
+    val_iou_scores = []
     
     # Train the model
     for epoch in range(num_epochs):
@@ -38,21 +80,20 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
         
         val_iou = 0
         val_f1 = 0
+        val_loss = 0
         
         for batch_idx, (inputs, targets) in enumerate(train_loader):
             model.train()
-            # inputs, targets = inputs.to(device), targets.to(device)
-            
             # Combine the inputs and targets into a single tensor
             data = torch.cat((inputs, targets), dim=1)
-    
-            
             # Apply the same augmentations to the combined tensor
-            augmented_data = train_augmentations(data)    
+            augmented_data = gt_augmentations(data)    
     
             # Split the augmented data back into individual inputs and targets
-            inputs = augmented_data[:, :inputs.size(1)].to(device)
+            inputs = augmented_data[:, :inputs.size(1)]
             targets = augmented_data[:, inputs.size(1):].to(device)
+
+            inputs = train_augmentations(inputs).to(device)
       
             optimizer.zero_grad()
             outputs, eval_out = model(inputs)
@@ -71,18 +112,34 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
                 for batch_idx, (inputs, targets) in enumerate(val_loader): 
                 
                     inputs, targets = inputs.to(device), targets.to(device)
-                    logits, outputs = model(inputs)
-                
+                    logits,outputs = model(inputs)
+                    
+                    
+                    val_loss = criterion(logits.to(device),targets)
+                    val_loss += val_loss.item() * inputs.size(0)
+                    
                     val_iou += iou_score(outputs.to(device), targets)
                     val_f1 += f1_score(outputs.to(device),targets)
-        
+
+                val_loss /= len(val_loader)
                 val_iou /= len(val_loader)
                 val_f1 /= len(val_loader)
             
         train_loss /= len(train_loader)
         train_iou /= len(train_loader)
         train_f1 /= len(train_loader)
-        
+    
+    
+    
+        # Collect metrics for plotting
+        train_losses.append(train_loss)
+        train_f1_scores.append(train_f1)
+        train_iou_scores.append(train_iou)
+    
+        if val_loader:
+            val_losses.append(val_loss)
+            val_f1_scores.append(val_f1)
+            val_iou_scores.append(val_iou)
         
         
      # Print progress
@@ -93,6 +150,14 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
                 print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
             print('Epoch: {} - Train Loss: {:.4f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, train_iou, train_f1))
+            
+            if val_loader:
+                print('Val_Loss: {} - Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_loss,val_f1,val_iou))
+    
+    if val_loader:
+        return train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores
+    else:
+        return train_losses,train_f1_scores,train_iou_scores
             
             
             
@@ -263,9 +328,9 @@ class SegNet(nn.Module):
     # Make a single prediction 
     def predict(self,x):
         self.eval()
-        probs = self.forward(x)
+        cnn_features,probs = self.forward(x)
         prediction = torch.where(probs > self.lane_threshold, torch.ones_like(probs), torch.zeros_like(probs))
-        return prediction
+        return prediction,cnn_features
         
     # Load trained model weights
     def load_weights(self,path): 

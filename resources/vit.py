@@ -241,6 +241,9 @@ class ViT(nn.Module):
             if name in parameter_names:
                 param.requires_grad = True
     
+    # Count trainable parameters
+    def count_parameters(self):
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
     
     

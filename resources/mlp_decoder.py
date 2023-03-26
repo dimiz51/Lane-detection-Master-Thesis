@@ -61,3 +61,7 @@ class DecoderMLP(nn.Module):
         elif isinstance(m, nn.BatchNorm1d):
             init.normal_(m.weight, 1.0, 0.02)
             init.constant_(m.bias, 0)
+            
+    # Count trainable parameters
+    def count_parameters(self):
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
