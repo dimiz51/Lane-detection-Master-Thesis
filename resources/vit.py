@@ -139,7 +139,7 @@ class ViT(nn.Module):
         patch_dim = 3 * patch_size ** 2
 
         # Define the patch embedding layer
-        self.patch_embedding = PatchEmbedding((self.image_size,self.image_size),self.patch_size,self.dim, 3)
+        self.patch_embedding = PatchEmbedding((self.image_size,self.image_size),self.patch_size,self.dim, 1)
         
         
         # Define the positional embedding layer
@@ -184,13 +184,13 @@ class ViT(nn.Module):
         if self.training:
             pos_embedding = nn.Parameter(self.pos_embedding.expand(x.shape[0], -1, -1))
             # Add the positional embeddings and use dropout
-            x = (x.reshape(x.shape[0], -1, 768) + pos_embedding)
+            x = (x.reshape(x.shape[0], -1, self.dim) + pos_embedding)
             x = self.dropout(x)
         else:
             # Batch forward for validation set
             pos_embedding = nn.Parameter(self.pos_embedding.expand(x.shape[0], -1, -1))
             # Add the positional embeddings and use dropout
-            x = (x.reshape(x.shape[0], -1, 768) + pos_embedding)
+            x = (x.reshape(x.shape[0], -1, self.dim) + pos_embedding)
             x = self.dropout(x)
                     
         # Apply the transformer layers
@@ -210,7 +210,7 @@ class ViT(nn.Module):
         else:
             map_dict = generate_map384()
             pretrained = ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1.get_state_dict(progress= True)
-            print('yes')
+            print('Loading weights from ViT-B16_p224_fn384..!')
         model_state_dict = self.state_dict()
     
         # create new state dict with mapped keys

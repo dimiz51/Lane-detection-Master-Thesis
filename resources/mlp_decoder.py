@@ -32,18 +32,18 @@ class DecoderMLP(nn.Module):
         self.num_patches = (image_size[0] // patch_size) ** 2
 
         self.mlp = nn.Sequential(
-            nn.Linear(d_encoder, 256),
-            nn.BatchNorm1d(self.num_patches),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.2),
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(self.num_patches),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.1),
-            nn.Linear(128, n_classes)
-        )
+                    nn.Linear(384, 512),
+                    nn.BatchNorm1d(self.num_patches),
+                    nn.ReLU(inplace=True),
+                    nn.Dropout(0.2),
+                    nn.Linear(512, 256),
+                    nn.BatchNorm1d(self.num_patches),
+                    nn.ReLU(inplace=True),
+                    nn.Dropout(0.1),
+                    nn.Linear(256, n_classes)
+                    )
         
-        self.apply(self.init_weights)
+        self.apply(self.weights_init)
 
     def forward(self, x):
         H, W = self.image_size
@@ -53,10 +53,11 @@ class DecoderMLP(nn.Module):
 
         return x
     
-    # Init weights method
-    @staticmethod
-    def init_weights(module):
-        if isinstance(module, (nn.Linear, nn.Conv2d)):
-            nn.init.kaiming_normal_(module.weight, mode='fan_in')
-            if module.bias is not None:
-                nn.init.constant_(module.bias, 0)
+    def weights_init(self,m):
+        if isinstance(m, nn.Linear):
+            init.kaiming_normal_(m.weight)
+            if m.bias is not None:
+                init.constant_(m.bias, 0)
+        elif isinstance(m, nn.BatchNorm1d):
+            init.normal_(m.weight, 1.0, 0.02)
+            init.constant_(m.bias, 0)

@@ -22,7 +22,7 @@ def disp_img(image: np.array , name = 'Image'):
     
 # Return the confusion matrix
 def confmat (pred,target):
-    confmat = ConfusionMatrix(task="binary", num_classes=2)
+    confmat = ConfusionMatrix(task="binary")
     return confmat(pred,target)
 
 # Helper func to plot image and ground truth simultaneously
