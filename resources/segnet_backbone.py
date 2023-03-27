@@ -45,10 +45,11 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=SGD_momentum, weight_decay=weight_decay)
-
+    # optimizer = optim.AdamW(model.parameters(), lr=lr , weight_decay = weight_decay)
+    
     # Set up learning rate scheduler
     if lr_scheduler:
-        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True)  
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.05, patience=4, verbose=True)  
 
     # Set up device (GPU or CPU)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -60,8 +61,8 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_
     gt_augmentations = transforms.Compose([transforms.RandomRotation(degrees=(10, 30)),
                                               transforms.RandomHorizontalFlip()])
   
-    train_augmentations = transforms.Compose([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
-                                            transforms.ColorJitter(brightness=0.35, contrast=0.2, saturation=0.4, hue=0.1)])
+    train_augmentations = transforms.Compose([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
+                                            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)])
     # Set a seed for augmentations
     torch.manual_seed(42) 
     
@@ -135,21 +136,21 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_
     
         # Collect metrics for plotting
         train_losses.append(train_loss)
-        train_f1_scores.append(train_f1)
-        train_iou_scores.append(train_iou)
+        train_f1_scores.append(train_f1.cpu().item())
+        train_iou_scores.append(train_iou.cpu().item())
     
         if val_loader:
-            val_losses.append(val_loss)
-            val_f1_scores.append(val_f1)
-            val_iou_scores.append(val_iou)
+            val_losses.append(val_loss.cpu().item())
+            val_f1_scores.append(val_f1.cpu().item())
+            val_iou_scores.append(val_iou.cpu().item())
         
         
      # Print progress
         if lr_scheduler:
             print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,optimizer.param_groups[0]['lr'], train_iou, train_f1))
-            scheduler.step()
+            scheduler.step(val_loss)
             if val_loader:
-                print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
+                print('Val_Loss: {} - Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_loss,val_f1,val_iou))
         else:
             print('Epoch: {} - Train Loss: {:.4f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, train_iou, train_f1))        
             if val_loader:
@@ -250,7 +251,7 @@ class SegNet(nn.Module):
         self.BNDe11 = nn.BatchNorm2d(self.out_chn, momentum=BN_momentum)
         
         # Initialize weights using the Xavier method
-        self.xavier_init()
+        # self.xavier_init()
     
     # Count pipeline trainable parameters
     def count_parameters(self):
@@ -258,24 +259,20 @@ class SegNet(nn.Module):
 
     def forward(self, x):
 
+        x = F.local_response_norm(x, size=3)
+
         #ENCODE LAYERS
         #Stage 1
         x = F.relu(self.BNEn11(self.ConvEn11(x))) 
         x = F.relu(self.BNEn12(self.ConvEn12(x))) 
         x, ind1 = self.MaxEn(x)
         size1 = x.size()
-        
-        # TEST
-        x = F.local_response_norm(x, size=3)
 
         #Stage 2
         x = F.relu(self.BNEn21(self.ConvEn21(x))) 
         x = F.relu(self.BNEn22(self.ConvEn22(x))) 
         x, ind2 = self.MaxEn(x)
         size2 = x.size()
-        
-        # TEST
-        x = F.local_response_norm(x, size=3)
 
         #Stage 3
         x = F.relu(self.BNEn31(self.ConvEn31(x))) 
@@ -283,9 +280,6 @@ class SegNet(nn.Module):
         x = F.relu(self.BNEn33(self.ConvEn33(x)))   
         x, ind3 = self.MaxEn(x)
         size3 = x.size()
-
-        # TEST
-        x = F.local_response_norm(x, size=3)
         
         #Stage 4
         x = F.relu(self.BNEn41(self.ConvEn41(x))) 
@@ -293,9 +287,6 @@ class SegNet(nn.Module):
         x = F.relu(self.BNEn43(self.ConvEn43(x)))   
         x, ind4 = self.MaxEn(x)
         size4 = x.size()
-
-        # TEST
-        x = F.local_response_norm(x, size=3)
         
         #Stage 5
         x = F.relu(self.BNEn51(self.ConvEn51(x))) 
@@ -304,8 +295,6 @@ class SegNet(nn.Module):
         x, ind5 = self.MaxEn(x)
         size5 = x.size()
         
-        # TEST
-        x = F.local_response_norm(x, size=3)
 
         #DECODE LAYERS
         #Stage 5
@@ -342,15 +331,15 @@ class SegNet(nn.Module):
     
     
     # Initalization of weights using the Xavier initialization method
-    def xavier_init(self):
-        for module in self.modules():
-            if isinstance(module, nn.Conv2d):
-                init.xavier_normal_(module.weight)
-                if module.bias is not None:
-                    init.constant_(module.bias, 0)
-            elif isinstance(module, nn.BatchNorm2d):
-                init.constant_(module.weight, 1)
-                init.constant_(module.bias, 0)
+    # def xavier_init(self):
+    #     for module in self.modules():
+    #         if isinstance(module, nn.Conv2d):
+    #             init.xavier_normal_(module.weight)
+    #             if module.bias is not None:
+    #                 init.constant_(module.bias, 0)
+    #         elif isinstance(module, nn.BatchNorm2d):
+    #             init.constant_(module.weight, 1)
+    #             init.constant_(module.bias, 0)
 
     # Make a single prediction 
     def predict(self,x):
