@@ -250,9 +250,7 @@ class SegNet(nn.Module):
         self.ConvDe11 = nn.Conv2d(64, self.out_chn, kernel_size=3, padding=1)
         self.BNDe11 = nn.BatchNorm2d(self.out_chn, momentum=BN_momentum)
         
-        # Initialize weights using the Xavier method
-        # self.xavier_init()
-    
+        
     # Count pipeline trainable parameters
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -329,18 +327,6 @@ class SegNet(nn.Module):
         
         return x,probs
     
-    
-    # Initalization of weights using the Xavier initialization method
-    # def xavier_init(self):
-    #     for module in self.modules():
-    #         if isinstance(module, nn.Conv2d):
-    #             init.xavier_normal_(module.weight)
-    #             if module.bias is not None:
-    #                 init.constant_(module.bias, 0)
-    #         elif isinstance(module, nn.BatchNorm2d):
-    #             init.constant_(module.weight, 1)
-    #             init.constant_(module.bias, 0)
-
     # Make a single prediction 
     def predict(self,x):
         self.eval()

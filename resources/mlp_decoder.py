@@ -32,7 +32,7 @@ class DecoderMLP(nn.Module):
         self.num_patches = (image_size[0] // patch_size) ** 2
 
         self.mlp = nn.Sequential(
-                    nn.Linear(384, 512),
+                    nn.Linear(d_encoder, 512),
                     nn.BatchNorm1d(self.num_patches),
                     nn.ReLU(inplace=True),
                     nn.Dropout(0.2),
