@@ -2,3 +2,4 @@ datasets/
 pre-trained/
 models/
 lightning_logs/
+plots/

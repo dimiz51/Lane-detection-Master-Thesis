@@ -26,6 +26,52 @@ from mlp_decoder import DecoderMLP
 from segnet_backbone import SegNet
 import utils
 
+
+# Plot metrics function 
+def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou, save_path = '../plots'):
+    # Plot training and validation losses
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, len(train_losses) + 1), train_losses, label='Train')
+    plt.plot(range(1, len(val_losses) + 1), val_losses, label='Validation')
+    plt.xlabel('Epochs (bins of 5)')
+    plt.ylabel('Loss')
+    plt.xticks(range(0, len(train_losses) + 1, 5))
+    plt.legend()
+    
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, 'loss_plot.png'))
+        
+    plt.show()
+
+    # Plot training and validation F1 scores
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, len(train_f1) + 1), train_f1, label='Train')
+    plt.plot(range(1, len(val_f1) + 1), val_f1, label='Validation')
+    plt.xlabel('Epochs (bins of 5)')
+    plt.ylabel('F1 Score')
+    plt.xticks(range(0, len(train_f1) + 1, 5))
+    plt.legend()
+    
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, 'f1_plot.png'))
+        
+    plt.show()
+
+    # Plot training and validation IoU scores
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, len(train_iou) + 1), train_iou, label='Train')
+    plt.plot(range(1, len(val_iou) + 1), val_iou, label='Validation')
+    plt.xlabel('Epochs (bins of 5)')
+    plt.ylabel('IoU Score')
+    plt.xticks(range(0, len(train_iou) + 1, 5))
+    plt.legend()
+    
+        
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, 'iou_plot.png'))
+        
+    plt.show()
+    
 # End-to-End pipeline (CNN + ViT + MLP)
 class Pipeline(nn.Module):
     def __init__(self, feat_extractor, vit_variant, mlp_head, image_size = (448,448)):
