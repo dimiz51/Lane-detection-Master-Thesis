@@ -141,10 +141,8 @@ class ViT(nn.Module):
         # Define the patch embedding layer
         self.patch_embedding = PatchEmbedding((self.image_size,self.image_size),self.patch_size,self.dim, 1)
         
-        
         # Define the positional embedding layer
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patches, dim))
-        self.pos_embedding = nn.init.trunc_normal_(self.pos_embedding,std= 0.02)
         
         # Define the transformer layers
         self.transformer = nn.TransformerEncoder(
@@ -155,22 +153,6 @@ class ViT(nn.Module):
         # Load model with pre-trained weights if flas is true else initiallize randomly
         if load_pre:
             self.load_pretrained_weights(pre_trained_path)
-        else:
-            # Randomly initialize patch embedding layer weights
-            init.normal_(self.patch_embedding.proj.weight, std=0.02)
-
-            # Initialize transformer layer weights
-            for i in range(depth):
-                layer = self.transformer.layers[i]
-                # Multi-Head Attention weights
-                init.normal_(layer.self_attn.in_proj_weight, std=0.02)
-                init.normal_(layer.self_attn.out_proj.weight, std=0.02)
-                # Feed-Forward layer weights
-                init.normal_(layer.linear1.weight, std=0.02)
-                init.normal_(layer.linear2.weight, std=0.02)
-                # Layer Normalization weights
-                init.constant_(layer.norm1.weight, 1)
-                init.constant_(layer.norm2.weight, 1)
 
     def forward(self, x, return_features = True):
         # Apply the patch embedding layer
@@ -245,11 +227,3 @@ class ViT(nn.Module):
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
-    
-    
-                
-            # Predict for one sample
-            # pos_embedding = self.pos_embedding
-            # # Add the positional embeddings and use dropout
-            # x = (x.reshape(1, -1, 768) + pos_embedding)
-            # x = self.dropout(x)

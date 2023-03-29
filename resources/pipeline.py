@@ -79,7 +79,7 @@ class Pipeline(nn.Module):
     def load_weights(self,path): 
         self.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
 
-    # Custom training function for the pipeline with schedule and augmentations
+# Custom training function for the pipeline with schedule and augmentations
 def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight_decay=0, SGD_momentum = 0.9, lr_scheduler=False, lane_weight = None):
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
@@ -94,13 +94,11 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
         {'params' : segnet_params, 'lr' : 0.01},
         {'params' : mlp_params, 'lr' : 0.01},
         {'params' : vit_params, 'lr' : 0.001}
-    ], momentum=SGD_momentum)
+    ], momentum=SGD_momentum, weight_decay= weight_decay)
     
     # Define your learning rate scheduler
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.01, patience=4, verbose=True)
-    # Set up learning rate scheduler
     if lr_scheduler:
-        pass
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True, threshold=1e-4, min_lr=[0.0001,0.0001, 0.001])
 
     # Set up device (GPU or CPU)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
