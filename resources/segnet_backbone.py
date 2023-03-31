@@ -41,11 +41,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou)
     plt.show()
 
 # Custom training function for the pipeline with schedule and augmentations
-def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_decay=0, SGD_momentum = 0.9, lr_scheduler=False, lane_weight = None):
+def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_decay=0, SGD_momentum = 0.9, lr_scheduler=False, lane_weight = None, save_path = None):
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=SGD_momentum, weight_decay=weight_decay)
-    # optimizer = optim.AdamW(model.parameters(), lr=lr , weight_decay = weight_decay)
     
     # Set up learning rate scheduler
     if lr_scheduler:
@@ -74,6 +73,8 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_
     val_losses = []
     val_f1_scores = []
     val_iou_scores = []
+    
+    best_val_loss = float('inf')
     
     # Train the model
     for epoch in range(num_epochs):
@@ -143,8 +144,16 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_
             val_losses.append(val_loss.cpu().item())
             val_f1_scores.append(val_f1.cpu().item())
             val_iou_scores.append(val_iou.cpu().item())
-        
-        
+            
+        # Check if currect val_loss is the best and save the weights
+        if val_loader and val_loss < best_val_loss:
+            best_val_loss = val_loss
+            # Save the model weights
+            if save_path:
+                torch.save(model.state_dict(), save_path)
+            else:
+                torch.save(model.state_dict(), '../models/best_segnet.pth')
+            
      # Print progress
         if lr_scheduler:
             print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,optimizer.param_groups[0]['lr'], train_iou, train_f1))

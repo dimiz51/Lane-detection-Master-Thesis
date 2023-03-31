@@ -12,6 +12,7 @@ import json
 import numpy as np
 import random
 import cv2
+import re
 
 # Set seed for randomize functions (Ez reproduction of results)
 random.seed(100)
@@ -32,7 +33,7 @@ class BaseSplitClass(Dataset):
 # Full Size: Train(3626 clips/ 20 frames per clip/ 20th only is annotated), Test(2782 clips/ 20 frames per clip/ 20th only annotated)
 # Link: https://github.com/TuSimple/tusimple-benchmark/tree/master/doc/lane_detection
 class TuSimple(Dataset):  
-    def __init__(self, train_annotations : list, train_img_dir: str, resize_to : tuple , subset_size = 0.2, image_size = (1280,720), val_size = 0):
+    def __init__(self, train_annotations : list, train_img_dir: str, resize_to : tuple , subset_size = 0.2, image_size = (1280,720), val_size = 0, test = False, previous = None):
         self.images_size = image_size
         self.resize = resize_to
         self.subset = subset_size
@@ -42,6 +43,8 @@ class TuSimple(Dataset):
         self.sf_w = round(resize_to[1] / 1280, 4)
         self.sf_h = round(resize_to[0] / 720, 4)
         self.val_size = val_size
+        self.test = test
+        self.previous_frames = previous
         self.train_dataset, self.train_gt = self.generate_dataset()
 
 
@@ -142,6 +145,7 @@ class TuSimple(Dataset):
     # Partition dataset according to input subset size and dynamically generate the train/val splits
     def generate_dataset(self):
         train_set = []
+        test_set = []
         
         complete_idx = [idx for idx in range(0, self.complete_size)]
         target_samples = int(self.complete_size * self.subset)
@@ -153,18 +157,38 @@ class TuSimple(Dataset):
         
         resized_train_gt = [self.get_resized_gt(ground,self.resize) for ground in train_gt]
         
-        # Load images, resize inputs, generate resized ground truth seg masks,transform to tensors and generate dataset (or subset)
-        for gt in train_gt:
-            img_path = gt['raw_file']
-            train_transforms = transforms.Compose([transforms.Resize(size = self.resize,interpolation=InterpolationMode.BICUBIC),
+        
+        if self.test:
+            regex = re.compile(r"\d+\.jpg$")
+            for gt in train_gt:
+                frames = []
+                img_path = gt['raw_file']
+                trimmed_img_path = regex.sub("", img_path)
+                train_transforms = transforms.Compose([transforms.Resize(size = self.resize,interpolation=InterpolationMode.BICUBIC),
                                                    transforms.ToTensor()
                                                    ])
-            image = cv2.imread(os.path.join(self.train_dir, img_path))
-            image = Image.fromarray(np.uint8(image))
-            img_tensor = train_transforms(image)
-            train_set.append(img_tensor)
+                for i in range(20,(20 - self.previous_frames) -1, -1):
+                    image = cv2.imread(os.path.join(self.train_dir, trimmed_img_path + f'{i}.jpg'))
+                    image = Image.fromarray(np.uint8(image))
+                    img_tensor = train_transforms(image)
+                    frames.append(img_tensor)
+                test_set.append(frames)
+                
+            return test_set, resized_train_gt
+                    
+        else:
+            # Load images, resize inputs, generate resized ground truth seg masks,transform to tensors and generate dataset (or subset)
+            for gt in train_gt:
+                img_path = gt['raw_file']
+                train_transforms = transforms.Compose([transforms.Resize(size = self.resize,interpolation=InterpolationMode.BICUBIC),
+                                                   transforms.ToTensor()
+                                                   ])
+                image = cv2.imread(os.path.join(self.train_dir, img_path))
+                image = Image.fromarray(np.uint8(image))
+                img_tensor = train_transforms(image)
+                train_set.append(img_tensor)
         
-        return train_set, resized_train_gt   
+            return train_set, resized_train_gt   
     
     # Generate train and validation splits dynamically (after this operation use del dataset to free memory)
     def train_val_split(self):
@@ -178,6 +202,8 @@ class TuSimple(Dataset):
         validation_set = BaseSplitClass(X_val,Y_val)
         
         return train_set, validation_set
+    
+        
         
         
 
