@@ -1,15 +1,20 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchmetrics import F1Score,JaccardIndex
+from torchmetrics import F1Score,JaccardIndex,Accuracy
 from torchvision import transforms
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn.init as init
+import os
+from torchmetrics.classification import BinaryStatScores
+import time
+import numpy as np
+
 
 # Plot metrics function 
-def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou):
+def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou, save_path = '../plots'):
     # Plot training and validation losses
     plt.figure(figsize=(10, 5))
     plt.plot(range(1, len(train_losses) + 1), train_losses, label='Train')
@@ -18,6 +23,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou)
     plt.ylabel('Loss')
     plt.xticks(range(0, len(train_losses) + 1, 5))
     plt.legend()
+    
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, '/loss_plot.png'))
+    
     plt.show()
 
     # Plot training and validation F1 scores
@@ -28,6 +37,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou)
     plt.ylabel('F1 Score')
     plt.xticks(range(0, len(train_f1) + 1, 5))
     plt.legend()
+    
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, '/f1_plot.png'))
+        
     plt.show()
 
     # Plot training and validation IoU scores
@@ -38,6 +51,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou)
     plt.ylabel('IoU Score')
     plt.xticks(range(0, len(train_iou) + 1, 5))
     plt.legend()
+    
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, '/iou_plot.png'))
+        
     plt.show()
 
 # Custom training function for the pipeline with schedule and augmentations
@@ -347,3 +364,132 @@ class SegNet(nn.Module):
     def load_weights(self,path): 
         self.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
         print('Loaded state dict succesfully!')
+        
+        
+# Evaluate on test set function (with temporal post-processing)
+def evaluate(model, test_set):
+    # Set up device (GPU or CPU)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = model.to(device)
+    
+    f1_score = F1Score(task="binary").to(device)
+    iou_score = JaccardIndex(task= 'binary').to(device)
+    stat_scores = BinaryStatScores().to(device)
+    accuracy = Accuracy(task="binary").to(device)
+        
+    test_f1 = 0
+    test_iou = 0
+    test_accuracy = 0
+    fps_temp = 0
+    
+    
+    no_temp_f1 = 0
+    no_temp_iou = 0
+    no_temp_accuracy = 0
+    fps_no = 0
+    
+    all_stats_no = []
+    all_stats_temp = []
+    
+    model.eval()
+    with torch.no_grad():
+        for clip in test_set:
+            gt = clip[1].to(device)
+            base_frame = clip[0][0].to(device)
+            
+            start_time1 = time.time()
+            
+            start_time2 = time.time()
+            
+            # Predict mask probs for base frame
+            _,base_mask_prob = model.forward(base_frame.unsqueeze(0))
+            
+            end_time1 = time.time()
+            
+            # Get F1 scores,IoU and Accuracy before temporal post process
+            no_temp_f1 += f1_score(base_mask_prob.to(device), gt.unsqueeze(0))
+            no_temp_iou += iou_score(base_mask_prob.to(device), gt.unsqueeze(0))
+            no_temp_accuracy += accuracy(base_mask_prob.to(device), gt.unsqueeze(0))
+            
+            # Measure FPS without temporal post process
+            processing_time = end_time1 - start_time1
+            fps_no += (1 / processing_time)
+            
+            # Get stats to calculate FPR/FNR
+            all_stats_no.append(stat_scores(base_mask_prob.to(device), gt.unsqueeze(0)))
+            
+            previous_masks = []
+            
+            # Predict masks probs for previous frames
+            for i in range(1,len(clip[0])):
+                prev_frame = clip[0][i].to(device)
+                _,prev_mask = model.forward(prev_frame.unsqueeze(0))
+                previous_masks.append(prev_mask)
+            
+            # Define the decay factor for the previous frames weights
+            decay_factor = 0.8
+
+            # Calculate the weights for each previous frame
+            weights = [decay_factor**i for i in range(len(clip[0])- 1)]
+            
+            # Normalize the weights so that they sum to 1
+            weights /= np.sum(weights)
+            
+            
+            # Loop over the previous frames and update the class probabilities for the target frame
+            for i, prev_mask in enumerate(previous_masks):
+                weight = weights[i]
+                base_mask_prob[:, 0, :, :] = (1 - weight) * base_mask_prob[:, 0, :, :] + weight * prev_mask[:, 0, :, :]
+                
+            end_time2 = time.time()
+            
+            # Measure FPS with temporal post process
+            processing_time = end_time2 - start_time2
+            fps_temp += (1 / processing_time)
+            
+            # Compare new mask with temporal post process with gt and get evaluation scores
+            test_f1 += f1_score(base_mask_prob.to(device), gt.unsqueeze(0))
+            test_iou += iou_score (base_mask_prob.to(device), gt.unsqueeze(0))
+            test_accuracy += accuracy(base_mask_prob.to(device), gt.unsqueeze(0))
+            
+            # Get stats for FNR/FPR with temporal
+            all_stats_temp.append(stat_scores(base_mask_prob.to(device), gt.unsqueeze(0)))
+            
+        # Get FPR and FNR for test set (with and without temporal)
+        
+        fp1_sum = torch.stack([s[1] for s in all_stats_no]).sum()
+        fn1_sum = torch.stack([s[3] for s in all_stats_no]).sum()
+        tn1_sum = torch.stack([s[2] for s in all_stats_no]).sum()
+        tp1_sum = torch.stack([s[0] for s in all_stats_no]).sum()
+        
+        # Average fpr without temporal
+        fpr_no = fp1_sum / (tn1_sum + fp1_sum)
+        fnr_no = fn1_sum / (tp1_sum + fn1_sum)
+        
+        fp2_sum = torch.stack([s[1] for s in all_stats_temp]).sum()
+        fn2_sum = torch.stack([s[3] for s in all_stats_temp]).sum()
+        tn2_sum = torch.stack([s[2] for s in all_stats_temp]).sum()
+        tp2_sum = torch.stack([s[0] for s in all_stats_temp]).sum()
+        
+        # Average fpr and fnr with temporal
+        fpr_temp = fp2_sum / (tn2_sum + fp2_sum)
+        fnr_temp = fn2_sum / (tp2_sum + fn2_sum)
+        
+        # Calculate test set average metrics
+        test_f1 /= len(test_set)
+        test_iou /= len(test_set)
+        no_temp_f1 /= len(test_set)
+        no_temp_iou /= len(test_set)
+        no_temp_accuracy /= len(test_set)
+        test_accuracy /= len(test_set)
+        fps_temp /= len(test_set)
+        fps_no /= len(test_set)
+        
+        # Create lists of metrics with and without temporal post process
+        
+        without = [round(fpr_no.item(),4), round(fnr_no.item(),4), round(no_temp_f1.item(),3), round(no_temp_iou.item(),3), round(no_temp_accuracy.item(),3) * 100, round(float(fps_no),3)]
+        
+        temporal = [round(fpr_temp.item(),4), round(fnr_temp.item(),4), round(test_f1.item(),3), round(test_iou.item(),3),round(test_accuracy.item(),3) * 100 ,round(float(fps_temp),3)]
+        
+        return without,temporal
+            
