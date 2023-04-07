@@ -39,7 +39,7 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     plt.legend()
     
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'loss_plot.png'))
+        plt.savefig(os.path.join(save_path, '/loss_plot.png'))
         
     plt.show()
 
@@ -53,7 +53,7 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     plt.legend()
     
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'f1_plot.png'))
+        plt.savefig(os.path.join(save_path, '/f1_plot.png'))
         
     plt.show()
 
@@ -68,7 +68,7 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     
         
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'iou_plot.png'))
+        plt.savefig(os.path.join(save_path, '/iou_plot.png'))
         
     plt.show()
     
