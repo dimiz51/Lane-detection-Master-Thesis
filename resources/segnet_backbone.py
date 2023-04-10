@@ -365,6 +365,11 @@ class SegNet(nn.Module):
         self.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
         print('Loaded state dict succesfully!')
         
+    # Freeze all layers except some
+    def freeze_all_but_some(self, parameter_names):
+        for name, param in self.named_parameters():
+            if name not in parameter_names:
+                param.requires_grad = False
         
 # Evaluate on test set function (with temporal post-processing)
 def evaluate(model, test_set):

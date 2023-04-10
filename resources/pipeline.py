@@ -91,7 +91,7 @@ class Pipeline(nn.Module):
         x,_ = self.cnn(im)
         
         # Standardize featmaps to prevent exploding gradients and help the ViT perform better
-        x = self.standarize_layer(x)
+        # x = self.standarize_layer(x)
         
         # Transform standardized feature maps using the ViT
         x = self.transformer(x)
@@ -126,7 +126,7 @@ class Pipeline(nn.Module):
         self.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
 
 # Custom training function for the pipeline with schedule and augmentations
-def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight_decay=0, SGD_momentum = 0.9, lr_scheduler=False, lane_weight = None):
+def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight_decay=0, SGD_momentum = 0.9, lr_scheduler=False, lane_weight = None, save_path = None):
     # Set up loss function and optimizer
     criterion =  nn.BCEWithLogitsLoss(pos_weight= lane_weight)
 
@@ -137,8 +137,8 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
 
     #define the optimizer with different learning rates for the parameter groups
     optimizer = optim.SGD([
-        {'params' : segnet_params, 'lr' : 0.01},
-        {'params' : mlp_params, 'lr' : 0.01},
+        {'params' : segnet_params, 'lr' : lr},
+        {'params' : mlp_params, 'lr' : lr},
         {'params' : vit_params, 'lr' : 0.001}
     ], momentum=SGD_momentum, weight_decay= weight_decay)
     
@@ -169,6 +169,8 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
     val_losses = []
     val_f1_scores = []
     val_iou_scores = []
+    
+    best_val_loss = float('inf')
     
     # Train the model
     for epoch in range(num_epochs):
@@ -239,11 +241,19 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
             val_f1_scores.append(val_f1)
             val_iou_scores.append(val_iou)
         
+        # Check if currect val_loss is the best and save the weights
+        if val_loader and val_loss < best_val_loss:
+            best_val_loss = val_loss
+            # Save the model weights
+            if save_path:
+                torch.save(model.state_dict(), save_path)
+            else:
+                torch.save(model.state_dict(), '../models/best_pipeline.pth')
         
      # Print progress
         if lr_scheduler:
             print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,optimizer.param_groups[0]['lr'], train_iou, train_f1))
-            # scheduler.step()
+            scheduler.step()
             if val_loader:
                 print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
@@ -257,3 +267,55 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
     else:
         return train_losses,train_f1_scores,train_iou_scores
     
+
+if __name__ == '__main__':
+    # Initialize SegNet with pre-trained frozen weights
+    cnn = SegNet()
+    cnn.load_weights('../models/best_segnet.pth')
+    cnn.freeze_all_but_some([])
+    print(f'Number of trainable parameters for SegNet : {cnn.count_parameters()}')
+
+    # Initialize ViT Tiny
+    vit_tiny = ViT(image_size=448, patch_size=16, num_classes=1, dim=192, depth=6, heads=3, 
+                      mlp_dim=768, dropout=0.1,load_pre= False)
+    print(f'Number of trainable parameters for ViT : {vit_tiny.count_parameters()}')
+
+    # Initialize MLP
+    patch_classifier = DecoderMLP(n_classes = 1, d_encoder = 192, image_size=(448,448))
+    print(f'Number of trainable parameters for MLP : {patch_classifier.count_parameters()}')
+    
+    # Create pipeline instance
+    model = Pipeline(cnn, vit_tiny, patch_classifier, image_size= (448,448))
+    print(f'Number of trainable parameters for Pipeline : {model.count_parameters()}')
+    
+    # ROOT DIRECTORIES
+    root_dir = os.path.dirname(os.getcwd())
+    annotated_dir = os.path.join(root_dir,'datasets/tusimple/train_set/annotations')
+    clips_dir = os.path.join(root_dir,'datasets/tusimple/train_set/')
+    annotated = os.listdir(annotated_dir)
+
+    annotations = list()
+    for gt_file in annotated:
+        path = os.path.join(annotated_dir,gt_file)
+        json_gt = [json.loads(line) for line in open(path)]
+        annotations.append(json_gt)
+    
+    annotations = [a for f in annotations for a in f]
+    
+    dataset = TuSimple(train_annotations = annotations, train_img_dir = clips_dir, resize_to = (448,448), subset_size = 0.001,val_size= 0.001)
+    train_set, validation_set = dataset.train_val_split()
+    del dataset
+    
+    # Lane weight
+    pos_weight = utils.calculate_class_weight(train_set)
+    
+    # Create dataloaders for train and validation 
+    train_loader = DataLoader(train_set, batch_size= 1,shuffle= True, drop_last= True, num_workers= 4) 
+    validation_loader = DataLoader(validation_set,batch_size= 1, shuffle= True, drop_last= True, num_workers= 4) 
+    
+    # Train the model
+    train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores = train(model, train_loader,val_loader= validation_loader , num_epochs= 1, 
+                                                                                        lane_weight = pos_weight, lr = 0.01, SGD_momentum= 0.9)
+    
+    # Plot metrics after training for train and validation sets (bins of 5 epochs)
+    plot_metrics(train_losses,val_losses,train_f1_scores,val_f1_scores,train_iou_scores,val_iou_scores)
