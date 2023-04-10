@@ -28,7 +28,7 @@ import utils
 
 
 # Plot metrics function 
-def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou, save_path = '../plots'):
+def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou, save_path = '../plots/'):
     # Plot training and validation losses
     plt.figure(figsize=(10, 5))
     plt.plot(range(1, len(train_losses) + 1), train_losses, label='Train')
@@ -39,9 +39,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     plt.legend()
     
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, '/loss_plot.png'))
+        filename = 'loss_plot.png'
+        plt.savefig(os.path.join(save_path, filename))
         
-    plt.show()
+    # plt.show()
 
     # Plot training and validation F1 scores
     plt.figure(figsize=(10, 5))
@@ -53,9 +54,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     plt.legend()
     
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, '/f1_plot.png'))
+        filename = 'f1_plot.png'
+        plt.savefig(os.path.join(save_path, filename))
         
-    plt.show()
+    # plt.show()
 
     # Plot training and validation IoU scores
     plt.figure(figsize=(10, 5))
@@ -68,9 +70,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     
         
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, '/iou_plot.png'))
+        filename = 'iou_plot.png'
+        plt.savefig(os.path.join(save_path, filename))
         
-    plt.show()
+    # plt.show()
     
 # End-to-End pipeline (CNN + ViT + MLP)
 class Pipeline(nn.Module):
@@ -253,7 +256,7 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
      # Print progress
         if lr_scheduler:
             print('Epoch: {} - Train Loss: {:.4f} - Learning Rate: {:.6f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss,optimizer.param_groups[0]['lr'], train_iou, train_f1))
-            scheduler.step()
+            scheduler.step(val_loss)
             if val_loader:
                 print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
@@ -302,7 +305,7 @@ if __name__ == '__main__':
     
     annotations = [a for f in annotations for a in f]
     
-    dataset = TuSimple(train_annotations = annotations, train_img_dir = clips_dir, resize_to = (448,448), subset_size = 0.001,val_size= 0.001)
+    dataset = TuSimple(train_annotations = annotations, train_img_dir = clips_dir, resize_to = (448,448), subset_size = 1, val_size= 0.15)
     train_set, validation_set = dataset.train_val_split()
     del dataset
     
@@ -310,12 +313,12 @@ if __name__ == '__main__':
     pos_weight = utils.calculate_class_weight(train_set)
     
     # Create dataloaders for train and validation 
-    train_loader = DataLoader(train_set, batch_size= 1,shuffle= True, drop_last= True, num_workers= 4) 
-    validation_loader = DataLoader(validation_set,batch_size= 1, shuffle= True, drop_last= True, num_workers= 4) 
+    train_loader = DataLoader(train_set, batch_size= 4,shuffle= True, drop_last= True, num_workers= 8) 
+    validation_loader = DataLoader(validation_set,batch_size= 4, shuffle= True, drop_last= True, num_workers= 8) 
     
     # Train the model
-    train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores = train(model, train_loader,val_loader= validation_loader , num_epochs= 1, 
-                                                                                        lane_weight = pos_weight, lr = 0.01, SGD_momentum= 0.9)
+    train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores = train(model, train_loader,val_loader= validation_loader , num_epochs= 100, 
+                                                                                        lane_weight = pos_weight, lr = 0.01, SGD_momentum= 0.9, lr_scheduler= True)
     
     # Plot metrics after training for train and validation sets (bins of 5 epochs)
     plot_metrics(train_losses,val_losses,train_f1_scores,val_f1_scores,train_iou_scores,val_iou_scores)
