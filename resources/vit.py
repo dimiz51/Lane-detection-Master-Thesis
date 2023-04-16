@@ -118,8 +118,7 @@ class PatchEmbedding(nn.Module):
         return x
     
     
-    
-# B-16 ViT Class
+# ViT Class
 class ViT(nn.Module):
     def __init__(self, image_size=224, patch_size=16, num_classes=1000, dim=768, depth=12, heads=12, 
                  mlp_dim=3072, dropout=0.1,load_pre = False, pre_trained_path = None):
@@ -142,7 +141,10 @@ class ViT(nn.Module):
         self.patch_embedding = PatchEmbedding((self.image_size,self.image_size),self.patch_size,self.dim, 1)
         
         # Define the positional embedding layer
-        self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patches, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patches + 1, dim))
+        
+        # Define the class embedding
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))
         
         # Define the transformer layers
         self.transformer = nn.TransformerEncoder(
@@ -164,15 +166,22 @@ class ViT(nn.Module):
                     
         # Dynamically expand pos embed across batch dimension
         if self.training:
+            cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
             pos_embedding = nn.Parameter(self.pos_embedding.expand(x.shape[0], -1, -1))
+            x = torch.cat((cls_tokens, x.permute(0,2,1)), dim=1)
             # Add the positional embeddings and use dropout
-            x = (x.reshape(x.shape[0], -1, self.dim) + pos_embedding)
+            x = (x + pos_embedding)
             x = self.dropout(x)
         else:
-            # Batch forward for validation set
+            # Add learnable class token per patch
+            cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+            x = torch.cat((cls_tokens, x.permute(0,2,1)), dim=1)
+            
             pos_embedding = nn.Parameter(self.pos_embedding.expand(x.shape[0], -1, -1))
+
             # Add the positional embeddings and use dropout
-            x = (x.reshape(x.shape[0], -1, self.dim) + pos_embedding)
+            x = (x + pos_embedding)
+            
             x = self.dropout(x)
                     
         # Apply the transformer layers

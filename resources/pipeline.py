@@ -93,11 +93,11 @@ class Pipeline(nn.Module):
         # CNN branch for feature extraction
         x,_ = self.cnn(im)
         
-        # Standardize featmaps to prevent exploding gradients and help the ViT perform better
-        # x = self.standarize_layer(x)
-        
         # Transform standardized feature maps using the ViT
         x = self.transformer(x)
+        
+        # Remove the learnable class token before patch classification
+        x = x[:, 1:]
         
         # Perform patch level classification (0 for background/ 1 for lane)
         x = self.mlp(x)
@@ -109,16 +109,6 @@ class Pipeline(nn.Module):
 
         return logits, probs
         
-        
-    # Standardize feature maps from SegNet layer
-    def standarize_layer(self,featmaps):
-        # Compute mean and standard deviation of each channel
-        mean = torch.mean(featmaps, dim=[0, 2, 3], keepdim=True)
-        std = torch.std(featmaps, dim=[0, 2, 3], keepdim=True)
-
-        # Normalize each channel to have zero mean and unit variance
-        normal_featmaps = (featmaps - mean) / std
-        return normal_featmaps
         
     # Count pipeline trainable parameters
     def count_parameters(self):
@@ -142,7 +132,7 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
     optimizer = optim.SGD([
         {'params' : segnet_params, 'lr' : lr},
         {'params' : mlp_params, 'lr' : lr},
-        {'params' : vit_params, 'lr' : 0.001}
+        {'params' : vit_params, 'lr' : lr}
     ], momentum=SGD_momentum, weight_decay= weight_decay)
     
     # Define your learning rate scheduler
@@ -174,7 +164,7 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
     val_iou_scores = []
     
     best_val_loss = float('inf')
-    
+
     # Train the model
     for epoch in range(num_epochs):
         train_loss = 0
@@ -232,17 +222,16 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
         train_iou /= len(train_loader)
         train_f1 /= len(train_loader)
 
-        scheduler.step(val_loss)
     
         # Collect metrics for plotting
         train_losses.append(train_loss)
-        train_f1_scores.append(train_f1)
-        train_iou_scores.append(train_iou)
+        train_f1_scores.append(train_f1.cpu().item())
+        train_iou_scores.append(train_iou.cpu().item())
     
         if val_loader:
-            val_losses.append(val_loss)
-            val_f1_scores.append(val_f1)
-            val_iou_scores.append(val_iou)
+            val_losses.append(val_loss.cpu().item())
+            val_f1_scores.append(val_f1.cpu().item())
+            val_iou_scores.append(val_iou.cpu().item())
         
         # Check if currect val_loss is the best and save the weights
         if val_loader and val_loss < best_val_loss:
@@ -261,11 +250,18 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
                 print('Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_f1,val_iou))
         else:
             print('Epoch: {} - Train Loss: {:.4f} - Train_IoU: {:.5f} - Train_F1: {:.5f}'.format(epoch+1, train_loss, train_iou, train_f1))
-            
             if val_loader:
                 print('Val_Loss: {} - Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_loss,val_f1,val_iou))
-    
+            
     if val_loader:
+        # Log metrics
+        metrics_dict = {'train_l': train_losses, 'train_f1': train_f1_scores, 'train_iou': train_iou_scores,
+                    'val_l': val_losses, 'val_f1_scores': val_f1_scores, 'val_iou': val_iou_scores}
+        
+        # Save log_dict to a JSON file
+        with open('../logs/plot_metrics.json', 'w') as f:
+            json.dump(metrics_dict, f)
+        
         return train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores
     else:
         return train_losses,train_f1_scores,train_iou_scores

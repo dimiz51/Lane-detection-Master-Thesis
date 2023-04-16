@@ -14,7 +14,7 @@ import numpy as np
 
 
 # Plot metrics function 
-def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou, save_path = '../plots'):
+def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou, save_path = '../plots/'):
     # Plot training and validation losses
     plt.figure(figsize=(10, 5))
     plt.plot(range(1, len(train_losses) + 1), train_losses, label='Train')
@@ -25,9 +25,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     plt.legend()
     
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, '/loss_plot.png'))
+        filename = 'loss_plot.png'
+        plt.savefig(os.path.join(save_path, filename))
     
-    plt.show()
+    # plt.show()
 
     # Plot training and validation F1 scores
     plt.figure(figsize=(10, 5))
@@ -39,9 +40,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     plt.legend()
     
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, '/f1_plot.png'))
+        filename = 'f1_plot.png'
+        plt.savefig(os.path.join(save_path, filename))
         
-    plt.show()
+    # plt.show()
 
     # Plot training and validation IoU scores
     plt.figure(figsize=(10, 5))
@@ -53,9 +55,10 @@ def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou,
     plt.legend()
     
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, '/iou_plot.png'))
+        filename = 'iou_plot.png'
+        plt.savefig(os.path.join(save_path, filename))
         
-    plt.show()
+    # plt.show()
 
 # Custom training function for the pipeline with schedule and augmentations
 def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_decay=0, SGD_momentum = 0.9, lr_scheduler=False, lane_weight = None, save_path = None):
@@ -186,7 +189,25 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_
         return train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores
     else:
         return train_losses,train_f1_scores,train_iou_scores
-            
+
+
+class SEBlock(nn.Module):
+    def __init__(self, in_channels, r=16):
+        super(SEBlock, self).__init__()
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc1 = nn.Linear(in_channels, in_channels // r, bias=False)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(in_channels // r, in_channels, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.pool(x).view(b, c)
+        y = self.fc1(y)
+        y = self.relu(y)
+        y = self.fc2(y)
+        y = self.sigmoid(y)
+        return x * y.view(b, c, 1, 1)
 
 
 # SegNet Architecture
