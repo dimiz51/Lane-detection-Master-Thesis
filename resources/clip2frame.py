@@ -1,7 +1,7 @@
 import cv2
 import os
 
-vid_path = '../clips/good_lanes.mp4'
+vid_path = '../clips/bad_lanes_croppe.mp4'
 
 # Open the video file
 video = cv2.VideoCapture(vid_path)
@@ -23,7 +23,7 @@ while True:
     resized_frame = cv2.resize(frame, (448, 448))
     
     # Save the frame as an image
-    cv2.imwrite(f"../clips/frame{count}.jpg", resized_frame)
+    cv2.imwrite(f"../clips/bad_lanes_clip/frame{count}.jpg", resized_frame)
     
     # Increment the frame count
     count += 1
