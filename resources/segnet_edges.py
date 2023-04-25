@@ -11,6 +11,7 @@ import os
 from torchmetrics.classification import BinaryStatScores
 import time
 import numpy as np
+import cv2
 
 
 # Plot metrics function 
@@ -190,7 +191,6 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.1, weight_
     else:
         return train_losses,train_f1_scores,train_iou_scores
 
-# SegNet Architecture
 # Adapted from : https://github.com/vinceecws/SegNet_PyTorch/blob/master/Pavements/SegNet.py
 
 class SegNet(nn.Module):
@@ -277,32 +277,46 @@ class SegNet(nn.Module):
         self.ConvDe11 = nn.Conv2d(64, self.out_chn, kernel_size=3, padding=1)
         self.BNDe11 = nn.BatchNorm2d(self.out_chn, momentum=BN_momentum)
         
-        
+
     # Count pipeline trainable parameters
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
     def forward(self, x):
-
+        
         x = F.local_response_norm(x, size=3)
 
         #ENCODE LAYERS
         #Stage 1
         x = F.relu(self.BNEn11(self.ConvEn11(x))) 
-        x = F.relu(self.BNEn12(self.ConvEn12(x))) 
+        x = F.relu(self.BNEn12(self.ConvEn12(x)))
+         
+        edges1 = self.canny_edge_detection(x)
+        
+        x = torch.add(x, edges1)
+        
         x, ind1 = self.MaxEn(x)
         size1 = x.size()
+
 
         #Stage 2
         x = F.relu(self.BNEn21(self.ConvEn21(x))) 
         x = F.relu(self.BNEn22(self.ConvEn22(x))) 
+        
+        edges2 = self.canny_edge_detection(x)
+        x = torch.add(x, edges2)
+        
         x, ind2 = self.MaxEn(x)
         size2 = x.size()
 
         #Stage 3
         x = F.relu(self.BNEn31(self.ConvEn31(x))) 
         x = F.relu(self.BNEn32(self.ConvEn32(x))) 
-        x = F.relu(self.BNEn33(self.ConvEn33(x)))   
+        x = F.relu(self.BNEn33(self.ConvEn33(x)))
+        
+        edges3 = self.canny_edge_detection(x)
+        x = torch.add(x, edges3) 
+        
         x, ind3 = self.MaxEn(x)
         size3 = x.size()
         
@@ -310,16 +324,24 @@ class SegNet(nn.Module):
         x = F.relu(self.BNEn41(self.ConvEn41(x))) 
         x = F.relu(self.BNEn42(self.ConvEn42(x))) 
         x = F.relu(self.BNEn43(self.ConvEn43(x)))   
+        
+        edges4 = self.canny_edge_detection(x)
+        x = torch.add(x, edges4)
+
+         
         x, ind4 = self.MaxEn(x)
         size4 = x.size()
-        
+
         #Stage 5
         x = F.relu(self.BNEn51(self.ConvEn51(x))) 
         x = F.relu(self.BNEn52(self.ConvEn52(x))) 
-        x = F.relu(self.BNEn53(self.ConvEn53(x)))   
+        x = F.relu(self.BNEn53(self.ConvEn53(x)))
+        
+        edges5 = self.canny_edge_detection(x)
+        x = torch.add(x, edges5)
+            
         x, ind5 = self.MaxEn(x)
         size5 = x.size()
-        
 
         #DECODE LAYERS
         #Stage 5
@@ -353,7 +375,7 @@ class SegNet(nn.Module):
         probs = F.sigmoid(x)
         
         return x,probs
-    
+
     # Make a single prediction 
     def predict(self,x):
         self.eval()
@@ -361,50 +383,74 @@ class SegNet(nn.Module):
         prediction = torch.where(probs > self.lane_threshold, torch.ones_like(probs), torch.zeros_like(probs))
         return prediction,cnn_features
     
+    def canny_edge_detection(self,x, low_threshold=50, high_threshold=150):
+        feature_dims = x.shape[1]
+        # Convert tensor to numpy array and transpose
+        x = x.detach().cpu().permute(0,2,3,1).numpy()
     
+        # Calculate mean of channels
+        gray = np.mean(x, axis=3)
+
+        # Reshape to (batch_size, height, width)
+        gray = gray.squeeze().astype(np.uint8)
+
+        # Apply Canny edge detection
+        edges = cv2.Canny(gray, low_threshold, high_threshold)
+    
+        # Convert back to tensor
+        edges = torch.Tensor(edges).unsqueeze(0).unsqueeze(0)
+        
+        # Expand edge_feature_map to have the same number of channels as conv_feature_map
+        edges = edges.repeat(1, feature_dims, 1, 1)
+    
+        return edges
+
     # Predict with temporal post-processing
     def predict_temporal (self,x):
         self.eval()
+        self.lane_threshold = 0.5
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        for clip in x:
-            base_frame = clip.to(device)
-            # Predict mask probs for base frame
-            _,base_mask_prob = self.forward(base_frame.unsqueeze(0))
+        with torch.no_grad():
+            for clip in x:
+                base_frame = clip.to(device)
+                # Predict mask probs for base frame
+                _,base_mask_prob = self.forward(base_frame.unsqueeze(0))
             
-            previous_masks = []
+                previous_masks = []
             
-            # Predict masks probs for previous frames
-            for i in range(1,len(x)):
-                prev_frame = x[i].to(device)
-                _,prev_mask = self.forward(prev_frame.unsqueeze(0))
-                previous_masks.append(prev_mask)
+                # Predict masks probs for previous frames
+                for i in range(1,len(x)):
+                    prev_frame = x[i].to(device)
+                    _,prev_mask = self.forward(prev_frame.unsqueeze(0))
+                    previous_masks.append(prev_mask)
                 
-            # Define the decay factor for the previous frames weights
-            decay_factor = 0.8
+                # Define the decay factor for the previous frames weights
+                decay_factor = 0.8
 
-            # Calculate the weights for each previous frame
-            weights = [decay_factor**i for i in range(len(clip[0])- 1)]
+                # Calculate the weights for each previous frame
+                weights = [decay_factor**i for i in range(len(clip[0])- 1)]
             
-            # Normalize the weights so that they sum to 1
-            weights /= np.sum(weights)
-            
-            # Loop over the previous frames and update the class probabilities for the target frame
-            for i, prev_mask in enumerate(previous_masks):
-                weight = weights[i]
-                base_mask_prob[:, 0, :, :] = (1 - weight) * base_mask_prob[:, 0, :, :] + weight * prev_mask[:, 0, :, :]
+                # Normalize the weights so that they sum to 1
+                weights /= np.sum(weights)
+
+                # Loop over the previous frames and update the class probabilities for the target frame
+                for i, prev_mask in enumerate(previous_masks):
+                    weight = weights[i]
+                    update_mask = (base_mask_prob < 0.85)
+                    base_mask_prob[update_mask] = (1 - weight) * base_mask_prob[update_mask] + weight * prev_mask[update_mask]
+                # # Loop over the previous frames and update the class probabilities for the target frame
+                # for i, prev_mask in enumerate(previous_masks):
+                #     weight = weights[i]
+                #     base_mask_prob[:, 0, :, :] = (1 - weight) * base_mask_prob[:, 0, :, :] + weight * prev_mask[:, 0, :, :]
                 
-        return base_mask_prob.squeeze(0)
-        
+            prediction = torch.where(base_mask_prob > self.lane_threshold, torch.ones_like(base_mask_prob), torch.zeros_like(base_mask_prob))
+            
+        return prediction
+            
     # Load trained model weights
     def load_weights(self,path): 
         self.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
         print('Loaded state dict succesfully!')
-        
-    # Freeze all layers except some
-    def freeze_all_but_some(self, parameter_names):
-        for name, param in self.named_parameters():
-            if name not in parameter_names:
-                param.requires_grad = False
         
 # Evaluate on test set function (with temporal post-processing)
 def evaluate(model, test_set):
