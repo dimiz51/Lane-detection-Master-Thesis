@@ -291,10 +291,9 @@ class SegNet(nn.Module):
         x = F.relu(self.BNEn11(self.ConvEn11(x))) 
         x = F.relu(self.BNEn12(self.ConvEn12(x)))
          
-        edges1 = self.canny_edge_detection(x)
-        
+        edges1 = self.canny_edge_detection_batch(x)    
         x = torch.add(x, edges1)
-        
+         
         x, ind1 = self.MaxEn(x)
         size1 = x.size()
 
@@ -303,7 +302,7 @@ class SegNet(nn.Module):
         x = F.relu(self.BNEn21(self.ConvEn21(x))) 
         x = F.relu(self.BNEn22(self.ConvEn22(x))) 
         
-        edges2 = self.canny_edge_detection(x)
+        edges2 = self.canny_edge_detection_batch(x)
         x = torch.add(x, edges2)
         
         x, ind2 = self.MaxEn(x)
@@ -314,8 +313,8 @@ class SegNet(nn.Module):
         x = F.relu(self.BNEn32(self.ConvEn32(x))) 
         x = F.relu(self.BNEn33(self.ConvEn33(x)))
         
-        edges3 = self.canny_edge_detection(x)
-        x = torch.add(x, edges3) 
+        edges3 = self.canny_edge_detection_batch(x)
+        x = torch.add(x, edges3)
         
         x, ind3 = self.MaxEn(x)
         size3 = x.size()
@@ -325,9 +324,9 @@ class SegNet(nn.Module):
         x = F.relu(self.BNEn42(self.ConvEn42(x))) 
         x = F.relu(self.BNEn43(self.ConvEn43(x)))   
         
-        edges4 = self.canny_edge_detection(x)
+        edges4 = self.canny_edge_detection_batch(x)
         x = torch.add(x, edges4)
-
+        
          
         x, ind4 = self.MaxEn(x)
         size4 = x.size()
@@ -337,7 +336,7 @@ class SegNet(nn.Module):
         x = F.relu(self.BNEn52(self.ConvEn52(x))) 
         x = F.relu(self.BNEn53(self.ConvEn53(x)))
         
-        edges5 = self.canny_edge_detection(x)
+        edges5 = self.canny_edge_detection_batch(x)
         x = torch.add(x, edges5)
             
         x, ind5 = self.MaxEn(x)
@@ -382,29 +381,32 @@ class SegNet(nn.Module):
         cnn_features,probs = self.forward(x)
         prediction = torch.where(probs > self.lane_threshold, torch.ones_like(probs), torch.zeros_like(probs))
         return prediction,cnn_features
-    
-    def canny_edge_detection(self,x, low_threshold=50, high_threshold=150):
-        feature_dims = x.shape[1]
-        # Convert tensor to numpy array and transpose
-        x = x.detach().cpu().permute(0,2,3,1).numpy()
-    
-        # Calculate mean of channels
-        gray = np.mean(x, axis=3)
 
-        # Reshape to (batch_size, height, width)
-        gray = gray.squeeze().astype(np.uint8)
-
-        # Apply Canny edge detection
-        edges = cv2.Canny(gray, low_threshold, high_threshold)
-    
-        # Convert back to tensor
-        edges = torch.Tensor(edges).unsqueeze(0).unsqueeze(0)
+    def canny_edge_detection_batch(self, x, low_threshold=50, high_threshold=150):
+        batch_size, feature_dims, height, width = x.shape
+        edges = []
+        for i in range(batch_size):
+            # Convert tensor to numpy array and transpose
+            img = x[i].detach().cpu().permute(1, 2, 0).numpy()
         
-        # Expand edge_feature_map to have the same number of channels as conv_feature_map
-        edges = edges.repeat(1, feature_dims, 1, 1)
+            # Calculate mean of channels
+            gray = np.mean(img, axis=2)
+
+            # Apply Canny edge detection
+            edges_img = cv2.Canny(gray.astype(np.uint8), low_threshold, high_threshold)
+    
+            # Convert back to tensor
+            edges_img = torch.Tensor(edges_img).unsqueeze(0).unsqueeze(0)
+        
+            # Expand edge_feature_map to have the same number of channels as conv_feature_map
+            edges_img = edges_img.repeat(1, feature_dims, 1, 1)
+        
+            edges.append(edges_img)
+    
+        edges = torch.cat(edges, dim=0)
     
         return edges
-
+    
     # Predict with temporal post-processing
     def predict_temporal (self,x):
         self.eval()
@@ -451,131 +453,4 @@ class SegNet(nn.Module):
     def load_weights(self,path): 
         self.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
         print('Loaded state dict succesfully!')
-        
-# Evaluate on test set function (with temporal post-processing)
-def evaluate(model, test_set):
-    # Set up device (GPU or CPU)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    
-    f1_score = F1Score(task="binary").to(device)
-    iou_score = JaccardIndex(task= 'binary').to(device)
-    stat_scores = BinaryStatScores().to(device)
-    accuracy = Accuracy(task="binary").to(device)
-        
-    test_f1 = 0
-    test_iou = 0
-    test_accuracy = 0
-    fps_temp = 0
-    
-    
-    no_temp_f1 = 0
-    no_temp_iou = 0
-    no_temp_accuracy = 0
-    fps_no = 0
-    
-    all_stats_no = []
-    all_stats_temp = []
-    
-    model.eval()
-    with torch.no_grad():
-        for clip in test_set:
-            gt = clip[1].to(device)
-            base_frame = clip[0][0].to(device)
-            
-            start_time1 = time.time()
-            
-            start_time2 = time.time()
-            
-            # Predict mask probs for base frame
-            _,base_mask_prob = model.forward(base_frame.unsqueeze(0))
-            
-            end_time1 = time.time()
-            
-            # Get F1 scores,IoU and Accuracy before temporal post process
-            no_temp_f1 += f1_score(base_mask_prob.to(device), gt.unsqueeze(0))
-            no_temp_iou += iou_score(base_mask_prob.to(device), gt.unsqueeze(0))
-            no_temp_accuracy += accuracy(base_mask_prob.to(device), gt.unsqueeze(0))
-            
-            # Measure FPS without temporal post process
-            processing_time = end_time1 - start_time1
-            fps_no += (1 / processing_time)
-            
-            # Get stats to calculate FPR/FNR
-            all_stats_no.append(stat_scores(base_mask_prob.to(device), gt.unsqueeze(0)))
-            
-            previous_masks = []
-            
-            # Predict masks probs for previous frames
-            for i in range(1,len(clip[0])):
-                prev_frame = clip[0][i].to(device)
-                _,prev_mask = model.forward(prev_frame.unsqueeze(0))
-                previous_masks.append(prev_mask)
-            
-            # Define the decay factor for the previous frames weights
-            decay_factor = 0.8
-
-            # Calculate the weights for each previous frame
-            weights = [decay_factor**i for i in range(len(clip[0])- 1)]
-            
-            # Normalize the weights so that they sum to 1
-            weights /= np.sum(weights)
-            
-            
-            # Loop over the previous frames and update the class probabilities for the target frame
-            for i, prev_mask in enumerate(previous_masks):
-                weight = weights[i]
-                base_mask_prob[:, 0, :, :] = (1 - weight) * base_mask_prob[:, 0, :, :] + weight * prev_mask[:, 0, :, :]
-                
-            end_time2 = time.time()
-            
-            # Measure FPS with temporal post process
-            processing_time = end_time2 - start_time2
-            fps_temp += (1 / processing_time)
-            
-            # Compare new mask with temporal post process with gt and get evaluation scores
-            test_f1 += f1_score(base_mask_prob.to(device), gt.unsqueeze(0))
-            test_iou += iou_score (base_mask_prob.to(device), gt.unsqueeze(0))
-            test_accuracy += accuracy(base_mask_prob.to(device), gt.unsqueeze(0))
-            
-            # Get stats for FNR/FPR with temporal
-            all_stats_temp.append(stat_scores(base_mask_prob.to(device), gt.unsqueeze(0)))
-            
-        # Get FPR and FNR for test set (with and without temporal)
-        
-        fp1_sum = torch.stack([s[1] for s in all_stats_no]).sum()
-        fn1_sum = torch.stack([s[3] for s in all_stats_no]).sum()
-        tn1_sum = torch.stack([s[2] for s in all_stats_no]).sum()
-        tp1_sum = torch.stack([s[0] for s in all_stats_no]).sum()
-        
-        # Average fpr without temporal
-        fpr_no = fp1_sum / (tn1_sum + fp1_sum)
-        fnr_no = fn1_sum / (tp1_sum + fn1_sum)
-        
-        fp2_sum = torch.stack([s[1] for s in all_stats_temp]).sum()
-        fn2_sum = torch.stack([s[3] for s in all_stats_temp]).sum()
-        tn2_sum = torch.stack([s[2] for s in all_stats_temp]).sum()
-        tp2_sum = torch.stack([s[0] for s in all_stats_temp]).sum()
-        
-        # Average fpr and fnr with temporal
-        fpr_temp = fp2_sum / (tn2_sum + fp2_sum)
-        fnr_temp = fn2_sum / (tp2_sum + fn2_sum)
-        
-        # Calculate test set average metrics
-        test_f1 /= len(test_set)
-        test_iou /= len(test_set)
-        no_temp_f1 /= len(test_set)
-        no_temp_iou /= len(test_set)
-        no_temp_accuracy /= len(test_set)
-        test_accuracy /= len(test_set)
-        fps_temp /= len(test_set)
-        fps_no /= len(test_set)
-        
-        # Create lists of metrics with and without temporal post process
-        
-        without = [round(fpr_no.item(),4), round(fnr_no.item(),4), round(no_temp_f1.item(),3), round(no_temp_iou.item(),3), round(no_temp_accuracy.item(),3) * 100, round(float(fps_no),3)]
-        
-        temporal = [round(fpr_temp.item(),4), round(fnr_temp.item(),4), round(test_f1.item(),3), round(test_iou.item(),3),round(test_accuracy.item(),3) * 100 ,round(float(fps_temp),3)]
-        
-        return without,temporal
             
