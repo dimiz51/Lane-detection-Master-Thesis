@@ -284,7 +284,7 @@ class SegNet(nn.Module):
 
     def forward(self, x):
         
-        x = F.local_response_norm(x, size=3)
+        # x = F.local_response_norm(x, size=3)
 
         #ENCODE LAYERS
         #Stage 1
