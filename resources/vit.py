@@ -138,7 +138,7 @@ class ViT(nn.Module):
         patch_dim = 3 * patch_size ** 2
 
         # Define the patch embedding layer
-        self.patch_embedding = PatchEmbedding((self.image_size,self.image_size),self.patch_size,self.dim, 1)
+        self.patch_embedding = PatchEmbedding((self.image_size,self.image_size),self.patch_size,self.dim, 64)
         
         # Define the positional embedding layer
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patches + 1, dim))

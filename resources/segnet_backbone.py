@@ -212,6 +212,7 @@ class SegNet(nn.Module):
         self.BNEn11 = nn.BatchNorm2d(64, momentum=BN_momentum)
         self.ConvEn12 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.BNEn12 = nn.BatchNorm2d(64, momentum=BN_momentum)
+        
 
         self.ConvEn21 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
         self.BNEn21 = nn.BatchNorm2d(128, momentum=BN_momentum)
@@ -348,11 +349,13 @@ class SegNet(nn.Module):
         #Stage 1
         x = self.MaxDe(x, ind1)
         x = F.relu(self.BNDe12(self.ConvDe12(x)))
+        # Feature map of dims (64,448,448) to be passed to the vit
+        featmap = x
         x = self.ConvDe11(x)
         
         probs = F.sigmoid(x)
         
-        return x,probs
+        return featmap,probs
     
     # Make a single prediction 
     def predict(self,x):
@@ -391,9 +394,12 @@ class SegNet(nn.Module):
             # Loop over the previous frames and update the class probabilities for the target frame
             for i, prev_mask in enumerate(previous_masks):
                 weight = weights[i]
-                base_mask_prob[:, 0, :, :] = (1 - weight) * base_mask_prob[:, 0, :, :] + weight * prev_mask[:, 0, :, :]
-                
-        return base_mask_prob.squeeze(0)
+                update_mask = (base_mask_prob < 0.85)
+                base_mask_prob[update_mask] = (1 - weight) * base_mask_prob[update_mask] + weight * prev_mask[update_mask]
+            
+            prediction = torch.where(base_mask_prob > self.lane_threshold, torch.ones_like(base_mask_prob), torch.zeros_like(base_mask_prob))
+            
+        return prediction
         
     # Load trained model weights
     def load_weights(self,path): 
