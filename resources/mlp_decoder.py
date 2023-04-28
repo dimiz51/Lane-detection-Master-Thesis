@@ -49,7 +49,8 @@ class DecoderMLP(nn.Module):
         H, W = self.image_size
         GS = H // self.patch_size
         x = self.mlp(x)
-        x = rearrange(x, "b (h w) c -> b c (h w)", h=GS)
+        x = rearrange(x,"b (h w) c -> b c h w", h=GS)
+        # x = rearrange(x, "b (h w) c -> b c (h w)", h=GS)
         # x = self.conv1d(x)
         # x = rearrange(x, "b c (h w) -> b c h w", h=GS)
 
