@@ -255,6 +255,7 @@ class ViT(nn.Module):
     # Count trainable parameters
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+    
 # Plot metrics function 
 def plot_metrics(train_losses, val_losses, train_f1, val_f1, train_iou, val_iou, save_path = '../plots/'):
     # Plot training and validation losses
@@ -480,22 +481,14 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
             if val_loader:
                 print('Val_Loss: {} - Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_loss,val_f1,val_iou))
             
-    if val_loader:
-        # Log metrics
-        metrics_dict = {'train_l': train_losses, 'train_f1': train_f1_scores, 'train_iou': train_iou_scores,
-                    'val_l': val_losses, 'val_f1_scores': val_f1_scores, 'val_iou': val_iou_scores}
-        
-        # Save log_dict to a JSON file
-        with open('../logs/plot_metrics.json', 'w') as f:
-            json.dump(metrics_dict, f)
-        
+    if val_loader: 
         return train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores
     else:
         return train_losses,train_f1_scores,train_iou_scores 
     
 if __name__ == '__main__':
     
-    # Initialize ViT Tiny
+    # Initialize ViT B-16
     vit_base = ViT(image_size=448, patch_size=16, num_classes=1, dim=768, depth=12, heads=12, 
                       mlp_dim=3072, dropout=0.1,load_pre= False)
     
