@@ -13,7 +13,6 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchmetrics import F1Score,JaccardIndex
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-# from torch_poly_lr_decay import PolynomialLRDecay
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 
@@ -253,15 +252,7 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
             if val_loader:
                 print('Val_Loss: {} - Val_F1: {:.5f}  - Val_IoU: {:.5f} '.format(val_loss,val_f1,val_iou))
             
-    if val_loader:
-        # Log metrics
-        metrics_dict = {'train_l': train_losses, 'train_f1': train_f1_scores, 'train_iou': train_iou_scores,
-                    'val_l': val_losses, 'val_f1_scores': val_f1_scores, 'val_iou': val_iou_scores}
-        
-        # Save log_dict to a JSON file
-        with open('../logs/plot_metrics.json', 'w') as f:
-            json.dump(metrics_dict, f)
-        
+    if val_loader:        
         return train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores
     else:
         return train_losses,train_f1_scores,train_iou_scores

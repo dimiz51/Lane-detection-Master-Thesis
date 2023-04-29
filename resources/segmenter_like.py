@@ -1,4 +1,4 @@
-# APPROACH LIKE : https://github.com/rstrudel/segmenter (vit base 16 + mlp decoder with pretrained weights for vit)
+# APPROACH LIKE : https://github.com/rstrudel/segmenter (vit base 16 + mlp decoder with/without pretrained weights for vit)
 
 
 # Imports 
@@ -372,12 +372,17 @@ def train(model, train_loader, val_loader = None, num_epochs=10, lr=0.01, weight
                                               transforms.RandomHorizontalFlip()])
     
     
-    # Define the normalization parameters for imagenet1k
-    mean = [0.485, 0.456, 0.406]
-    std = [0.229, 0.224, 0.225]
+    # Use these to train with pre-trained weights
     
-    train_augmentations = transforms.Compose([transforms.Normalize(mean=mean, std=std),
-                                            transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
+    # Define the normalization parameters for imagenet1k
+    # mean = [0.485, 0.456, 0.406]
+    # std = [0.229, 0.224, 0.225]
+    
+    # train_augmentations = transforms.Compose([transforms.Normalize(mean=mean, std=std),
+    #                                         transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
+    #                                         transforms.ColorJitter(brightness=0.35, contrast=0.2, saturation=0.4, hue=0.1)])
+    
+    train_augmentations = transforms.Compose([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
                                             transforms.ColorJitter(brightness=0.35, contrast=0.2, saturation=0.4, hue=0.1)])
     # Set a seed for augmentations
     torch.manual_seed(42) 
@@ -492,7 +497,7 @@ if __name__ == '__main__':
     vit_base = ViT(image_size=448, patch_size=16, num_classes=1, dim=768, depth=12, heads=12, 
                       mlp_dim=3072, dropout=0.1,load_pre= False)
     
-    vit_base.load_pretrained_weights(None)
+    # vit_base.load_pretrained_weights(None)
     print(f'Number of trainable parameters for ViT : {vit_base.count_parameters()}')
     
 
@@ -503,27 +508,3 @@ if __name__ == '__main__':
     segmenter = Segmenter(vit_base,patch_classifier,(448,448))
     print(f'Pipeline trainable params: {segmenter.count_parameters()}')
     
-    # ROOT DIRECTORIES
-    # root_dir = os.path.dirname(os.getcwd())
-    # annotated_dir = os.path.join(root_dir,'datasets/tusimple/train_set/annotations')
-    # clips_dir = os.path.join(root_dir,'datasets/tusimple/train_set/')
-    # annotated = os.listdir(annotated_dir)
-
-    # annotations = list()
-    # for gt_file in annotated:
-    #     path = os.path.join(annotated_dir,gt_file)
-    #     json_gt = [json.loads(line) for line in open(path)]
-    #     annotations.append(json_gt)
-    
-    # annotations = [a for f in annotations for a in f]
-    
-    # dataset = TuSimple(train_annotations = annotations, train_img_dir = clips_dir, resize_to = (448,448), subset_size = 0.001, val_size= 0.15)
-    # train_set, validation_set = dataset.train_val_split()
-    # del dataset
-    
-    # # Lane weight
-    # pos_weight = utils.calculate_class_weight(train_set)
-    
-    # # Create dataloaders for train and validation 
-    # train_loader = DataLoader(train_set, batch_size= 4,shuffle= True, drop_last= True, num_workers= 8) 
-    # validation_loader = DataLoader(validation_set,batch_size= 4, shuffle= True, drop_last= True, num_workers= 8) 
