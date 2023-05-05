@@ -11,6 +11,19 @@ import os
 from torchmetrics.classification import BinaryStatScores
 import time
 import numpy as np
+from torch.utils.data import DataLoader
+import json
+
+
+
+# Import TuSimple loader
+import sys
+sys.path.insert(0,'../resources/')
+from tusimple import TuSimple
+from vit import ViT
+from mlp_decoder import DecoderMLP
+from segnet_backbone import SegNet
+import utils
 
 
 # Plot metrics function 
@@ -539,3 +552,39 @@ def evaluate(model, test_set):
         
         return without,temporal
             
+
+if __name__ == '__main__':
+    # Initialize SegNet with pre-trained frozen weights
+    cnn = SegNet()
+    
+    # ROOT DIRECTORIES
+    root_dir = os.path.dirname(os.getcwd())
+    annotated_dir = os.path.join(root_dir,'datasets/tusimple/train_set/annotations')
+    clips_dir = os.path.join(root_dir,'datasets/tusimple/train_set/')
+    annotated = os.listdir(annotated_dir)
+
+    annotations = list()
+    for gt_file in annotated:
+        path = os.path.join(annotated_dir,gt_file)
+        json_gt = [json.loads(line) for line in open(path)]
+        annotations.append(json_gt)
+    
+    annotations = [a for f in annotations for a in f]
+    
+    dataset = TuSimple(train_annotations = annotations, train_img_dir = clips_dir, resize_to = (448,448), subset_size = 1, val_size= 0.15)
+    train_set, validation_set = dataset.train_val_split()
+    del dataset
+    
+    # Lane weight
+    pos_weight = utils.calculate_class_weight(train_set)
+    
+    # Create dataloaders for train and validation 
+    train_loader = DataLoader(train_set, batch_size= 4, shuffle= True, drop_last= True, num_workers= 8) 
+    validation_loader = DataLoader(validation_set,batch_size= 4, shuffle= True, drop_last= True, num_workers= 8) 
+    
+    # Train the model
+    train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores = train(cnn, train_loader,val_loader= validation_loader , num_epochs= 50, 
+                                                                                        lane_weight = pos_weight, lr = 0.01, SGD_momentum= 0.9, lr_scheduler= True)
+    
+    # Plot metrics after training for train and validation sets (bins of 5 epochs)
+    plot_metrics(train_losses,val_losses,train_f1_scores,val_f1_scores,train_iou_scores,val_iou_scores)

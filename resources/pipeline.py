@@ -304,7 +304,7 @@ if __name__ == '__main__':
     validation_loader = DataLoader(validation_set,batch_size= 4, shuffle= True, drop_last= True, num_workers= 8) 
     
     # Train the model
-    train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores = train(model, train_loader,val_loader= validation_loader , num_epochs= 100, 
+    train_losses,train_f1_scores,train_iou_scores,val_losses,val_f1_scores,val_iou_scores = train(model, train_loader,val_loader= validation_loader , num_epochs= 50, 
                                                                                         lane_weight = pos_weight, lr = 0.01, SGD_momentum= 0.9, lr_scheduler= True)
     
     # Plot metrics after training for train and validation sets (bins of 5 epochs)

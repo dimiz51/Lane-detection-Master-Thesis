@@ -48,32 +48,35 @@ def make_video(frames_dir, output_file):
     video_writer.release()
 
 
+# Creates a video with lane detection overlays for a set of frames
+
 if __name__ == '__main__':
-    # cnn = SegNet()
-    # cnn.load_weights('../models/best_segnet.pth')
+    cnn = SegNet()
+    cnn.load_weights('../models/best_segnet.pth')
     
-    # frames_dir = '../clips/bad_lanes_clip'
+    frames_dir = 'CLIP_FRAMES'
 
-    # # loop over the frames directory and process each frame
-    # for filename in os.listdir(frames_dir):
-    #     if filename.endswith(".jpg") or filename.endswith(".png"): 
-    #         # load the image
-    #         image_path = os.path.join(frames_dir, filename)
-    #         image = torch.from_numpy(load_image(image_path).transpose(0,3, 1, 2))
-    #         pred,_ = cnn.predict(image)
-    #         mask = pred.squeeze(0).cpu().numpy()
+    # loop over the frames directory and process each frame
+    for filename in os.listdir(frames_dir):
+        if filename.endswith(".jpg") or filename.endswith(".png"): 
+            # load the image
+            image_path = os.path.join(frames_dir, filename)
+            image = torch.from_numpy(load_image(image_path).transpose(0,3, 1, 2))
+            pred,_ = cnn.predict(image)
+            mask = pred.squeeze(0).cpu().numpy()
        
-    #         # convert the binary mask to green dots on the original frame
-    #         original_image = cv2.imread(image_path)
-    #         original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
-    #         green_dots = np.zeros_like(original_image)
-    #         green_dots[:,:,1] = 255 * mask
-    #         overlay_image = cv2.addWeighted(original_image, 0.7, green_dots, 0.3, 0)
+            # convert the binary mask to green dots on the original frame
+            original_image = cv2.imread(image_path)
+            original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+            green_dots = np.zeros_like(original_image)
+            green_dots[:,:,1] = 255 * mask
+            overlay_image = cv2.addWeighted(original_image, 0.7, green_dots, 0.3, 0)
 
-    #         # save the image with green masked predicted lane points 
-    #         cv2.imwrite(f'../clips/pred_frames/{filename}', overlay_image)
+            # save the image with green masked predicted lane points 
+            # PRED FRAMES DIR
+            cv2.imwrite(f'../clips/pred_frames/{filename}', overlay_image)
     
     # Predicted marked frames dir
     pred_frames_dir = '../clips/pred_frames'
-    output_file = '../clips/pred_vid_bad.mp4'
+    output_file = 'OUT_FILE_NAME'
     make_video(pred_frames_dir, output_file)

@@ -20,6 +20,14 @@ def disp_img(image: np.array , name = 'Image'):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     
+def save_img(image: np.array , name = 'Image', save = False):
+    #save the image as well
+    if save:
+        cv2.imwrite(name + ".jpg", image)
+    cv2.imshow(name,image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    
 # Return the confusion matrix
 def confmat (pred,target):
     confmat = ConfusionMatrix(task="binary")
