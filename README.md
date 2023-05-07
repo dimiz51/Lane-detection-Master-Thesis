@@ -72,21 +72,13 @@ Some results from our SegNet backbone model are depicted below:
     <img src="https://iili.io/HSsTKEQ.jpg" alt="Original Image from the TuSimple dataset" width="400"/>
     <img src="https://iili.io/HSsTFCx.jpg" alt="Ground truth binary mask" width="400"/>
   </p>
-  <p align="left" style="font-size: 10px;">
-    <em> a) Original Image from the TuSimple dataset</em> &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; <em> b) Ground truth binary mask</em>
-  </p>
-
   <p align="left">
     <img src="https://iili.io/HSsTB3B.png" alt="Prediction without temporal post-process" width="400"/>
     <img src="https://iili.io/HSsTf4V.png" alt="Prediction with temporal post-process" width="400"/>
   </p>
-  <p align="left" style="font-size: 10px;">
-    <em>c) Prediction without temporal post-process</em> &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; <em>d) Prediction with temporal post-process</em>
-  </p>
 </div>
 
-
-
+The displayed image grid depicts (in this order) the original image, the binary mask ground truth, the predicted lane markings without the use of temporal post-processing and finally the post-processed with temporal information predicted mask.
 
 
 # Contributors
