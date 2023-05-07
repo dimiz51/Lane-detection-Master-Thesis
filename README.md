@@ -78,7 +78,7 @@ Some results from our SegNet backbone model are depicted below:
   </p>
 </div>
 
-The displayed image grid depicts (in this order) the original image, the binary mask ground truth, the predicted lane markings without the use of temporal post-processing and finally the post-processed with temporal information predicted mask.
+The displayed image grid depicts (in this order) the original image, the binary mask ground truth, the predicted lane markings without the use of temporal post-processing and finally the post-processed with temporal information mask.
 
 
 # Contributors
