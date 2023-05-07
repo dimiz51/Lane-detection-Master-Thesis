@@ -57,7 +57,7 @@ python pipeline.py
 
 Additionaly, two extra scripts are added in order to test our SegNet model with the post-processing module on your own unseen road scene data.
 
-- In order to to this you should specify the "vid_path" variable in the clip2frame script and use mkdir to create an empty directory inside the "clips" folder.
+- In order to do this you should specify the "vid_path" variable in the clip2frame.py script and use mkdir to create an empty directory inside the "clips" folder.
 This script turns your clip into sequential frames with 100ms difference between each of them
 - In order to perform inference over your frames and turn those back into a videos similarly you need to use "mkdir pred_frames" to create an empty directory
 in the clips folder to save the frames with the lane predictions overlay.
