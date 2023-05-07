@@ -1,4 +1,4 @@
-# Hybrid Deep Learning approach for Lane Detection (MSc thesis) 
+# Hybrid Deep Learning approach for Lane Detection 
 
 # Introduction
 Lane detection is a critical task in the field of autonomous driving and advanced driver assistance systems. This GitHub repository contains the code for the research work presented in a thesis that investigates the effectiveness of incorporating a Vision Transformer (ViT) to process feature maps extracted by a Convolutional Neural Network (CNN) for lane detection.
