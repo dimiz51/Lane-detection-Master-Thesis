@@ -3,7 +3,7 @@
 # Introduction
 Lane detection is a critical task in the field of autonomous driving and advanced driver assistance systems. This GitHub repository contains the code for the research work presented in a thesis that investigates the effectiveness of incorporating a Vision Transformer (ViT) to process feature maps extracted by a Convolutional Neural Network (CNN) for lane detection.
 The research work explores the impact of incorporating temporal information from a road scene on a lane detection model's predictive performance. A post-processing technique that utilizes information from previous frames is proposed to improve the accuracy of the lane detection model.
-The repository includes the implementation of a baseline CNN (SegNet) lane detection model, a hybrid CNN-ViT pipeline, and a post-processing mechanism that uses temporal information. The models are tested on the well-known TuSimple dataset, and the results are presented in the thesis report.
+The repository includes the implementation of a baseline CNN (SegNet) lane detection model, a hybrid CNN-ViT pipeline, and a post-processing mechanism that uses temporal information. The models are tested on the well-known TuSimple dataset, and the results are presented in the thesis report (not yet published).
 
 ## Getting Started
 
