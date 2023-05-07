@@ -69,11 +69,11 @@ Some results from our SegNet backbone model are depicted below:
 
 ![Original Image](https://freeimage.host/i/HSsTFCx)
 
-![Ground Truth] (https://freeimage.host/i/HSsTFCx)
+![Ground Truth](https://freeimage.host/i/HSsTFCx)
 
 ![Prediction without temporal post-process](https://freeimage.host/i/HSsTB3B)
 
-![Prediction with temporal] (https://freeimage.host/i/HSsTf4V)
+![Prediction with temporal](https://freeimage.host/i/HSsTf4V)
 
 
 # Contributors
