@@ -67,7 +67,25 @@ predictions overlay.
 # Results
 Some results from our SegNet backbone model are depicted below:
 
-![Original Image](![HSsTFCx.jpg](https://iili.io/HSsTFCx.jpg))
+<p align="center">
+  <img src="https://iili.io/HSsTKEQ.jpg" alt="Original Image from the TuSimple dataset" width="400"/>
+  <img src="https://iili.io/HSsTFCx.jpg" alt="Ground truth binary mask" width="400"/>
+</p>
+<p align="center">
+  <em>Original Image from the TuSimple dataset</em> &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; <em>Ground truth binary mask</em>
+</p>
+
+<p align="center">
+  <img src="https://iili.io/HSsTf4V.png" alt="Prediction without temporal post-process" width="400"/>
+  <img src="https://iili.io/HSsTB3B.png" alt="Prediction with temporal post-process" width="400"/>
+</p>
+<p align="center">
+  <em>Predicted lane markings without temporal post-process</em> &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; <em>Predicted lane markings with temporal post-process</em>
+</p>
+
+
+
+
 
 
 # Contributors
